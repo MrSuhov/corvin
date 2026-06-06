@@ -1,0 +1,2 @@
+"NSMicrophoneUsageDescription" = "Corvin использует микрофон для записи голоса и преобразования его в текст.";
+"NSAccessibilityUsageDescription" = "Corvin использует Accessibility API для вставки распознанного текста в активное поле ввода.";

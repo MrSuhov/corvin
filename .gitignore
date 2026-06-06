@@ -1,0 +1,47 @@
+# Build
+.build/
+build/
+build-sim/
+DerivedData/
+*.xcodeproj
+xcuserdata/
+
+# Dependencies
+vendor/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Xcode
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Certificates & local signing config
+certs/
+signing.env
+fastlane/.env
+
+# Assets
+logo/
+
+# Swift Package Manager
+Package.resolved
+.swiftpm/
+
+# Test artifacts
+test-results.log
+*.xcresult/
+*_test.pcm
+
+# Issues
+issues/

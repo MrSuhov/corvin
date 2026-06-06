@@ -1,0 +1,203 @@
+/*
+  Localizable.strings (English)
+  Corvin
+*/
+
+// MARK: - Common
+"app.name" = "Corvin";
+"common.cancel" = "Cancel";
+"common.done" = "Done";
+"common.delete" = "Delete";
+"common.save" = "Save";
+"common.close" = "Close";
+"common.version" = "Version";
+"common.request" = "Request";
+
+// MARK: - Settings Tabs (macOS)
+"settings.tab.general" = "General";
+"settings.tab.models" = "Models";
+"settings.tab.indicator" = "Indicator";
+"settings.tab.history" = "History";
+"settings.tab.permissions" = "Permissions";
+"settings.tab.language" = "Language";
+"settings.tab.test" = "Test";
+
+// MARK: - Test Transcription
+"test.recording.title" = "Test Recording";
+"test.recording.hold" = "Hold the button to record";
+"test.recording.holdRelease" = "Recording... Release to stop";
+"test.file.title" = "File Transcription";
+"test.file.formats" = "Supported formats: OGG (Telegram), WAV, M4A, MP3, AIFF";
+"test.file.choose" = "Choose File";
+"test.file.chooseMessage" = "Select an audio file for transcription";
+"test.result" = "Result";
+"test.copy" = "Copy";
+"test.noModel" = "Model not loaded";
+
+// MARK: - General Settings
+"settings.general.launchAtLogin" = "Launch at Login";
+"settings.general.recordingKey" = "Recording Key:";
+"settings.general.pressKey" = "Press a key…";
+"settings.general.autoInsert" = "Auto-insert text into active field";
+"settings.general.copyToClipboard" = "Copy to clipboard";
+
+// MARK: - Indicator Settings
+"settings.indicator.show" = "Show indicator";
+"settings.indicator.position" = "Position";
+"settings.indicator.position.bottomRight" = "Bottom Right";
+"settings.indicator.position.bottomLeft" = "Bottom Left";
+"settings.indicator.position.topRight" = "Top Right";
+"settings.indicator.position.topLeft" = "Top Left";
+"settings.indicator.position.bottomCenter" = "Bottom Center";
+"settings.indicator.size" = "Size";
+"settings.indicator.size.compact" = "Compact";
+"settings.indicator.size.normal" = "Normal";
+
+// MARK: - History Settings
+"settings.history.autoCleanup" = "Auto-cleanup";
+"settings.history.period.week" = "Week";
+"settings.history.period.month" = "Month";
+"settings.history.period.halfYear" = "6 Months";
+"settings.history.period.never" = "Never";
+"settings.history.clearAll" = "Clear All History";
+
+// MARK: - Permissions
+"settings.permissions.accessibility" = "Accessibility";
+"settings.permissions.microphone" = "Microphone";
+"settings.permissions.resetAll" = "Reset All Permissions";
+"settings.permissions.resetHint" = "Use reset if permissions stopped working after update";
+
+// MARK: - Language Settings
+"settings.language.appLanguage" = "App Language";
+"settings.language.useSystem" = "Use System Language";
+"settings.language.keyboardLanguages" = "Keyboard Languages";
+"settings.language.selectKeyboardLanguages" = "Select Languages";
+"settings.language.keyboardHint" = "Select languages for keyboard switching. Changes apply after keyboard restart.";
+"settings.language.atLeastOne" = "At least one language must be selected";
+"settings.language.restartRequired" = "Some changes may need an app restart.";
+
+// MARK: - iOS Settings
+"settings.title" = "Settings";
+"settings.diagnostics" = "Diagnostics";
+"settings.serverLogs" = "Server Logs";
+"settings.about" = "About";
+"settings.transcription" = "Transcription";
+"settings.autoCleanup.header" = "Auto-cleanup History";
+"settings.autoCleanup.period" = "Period";
+"settings.autoCleanup.never" = "Never";
+"settings.autoCleanup.week" = "Week";
+"settings.autoCleanup.month" = "Month";
+"settings.autoCleanup.halfYear" = "6 Months";
+"settings.diagnostics.header" = "Diagnostics";
+"settings.diagnostics.serverLogs" = "Server Logs";
+"settings.about.header" = "About";
+"settings.about.version" = "Version";
+"settings.about.transcription" = "Transcription";
+
+// MARK: - Models
+"models.quality.basic" = "basic";
+"models.quality.normal" = "normal";
+"models.quality.good" = "good";
+"models.quality.excellent" = "excellent";
+"models.quality.best" = "best";
+"models.quality.excellent_compressed" = "excellent (compressed)";
+"models.quality.best_compressed" = "best (compressed)";
+"models.quality.best_fast" = "best (fast)";
+"models.quality.english_optimized" = "optimized for English";
+"models.download" = "Download";
+"models.downloading" = "Downloading…";
+"models.active" = "Active";
+"models.select" = "Select";
+"models.delete" = "Delete";
+"models.recommended" = "Recommended";
+"models.error.downloadFailed" = "Failed to download model";
+"models.error.checksumMismatch" = "Checksum mismatch";
+"models.quality" = "Quality";
+"models.available" = "Available Models";
+"models.section.free" = "Models";
+"models.section.pro" = "Pro Models";
+"models.pro.locked" = "Available with Corvin Pro";
+"models.intel.recommendation" = "Intel Mac: tiny, base or small recommended";
+
+// MARK: - Pro
+"pro.title" = "Corvin Pro";
+"pro.subtitle" = "Support Development";
+"pro.description" = "Corvin is completely free. Pro is just a way to say thanks ☺️\nAnd change the app icon, of course! 😂";
+"pro.description.macos" = "Corvin is completely free. Pro is just a way to say thanks ☺️";
+"pro.feature.models" = "Additional recognition models";
+"pro.feature.icon" = "Exclusive app icon";
+"pro.buy" = "Buy for %@";
+"pro.restore" = "Restore Purchase";
+"pro.activated" = "Pro Activated";
+"pro.thankYou" = "Thank you for your support!";
+"pro.thankYou.detail" = "You're awesome. Enjoy Corvin Pro! 🎉";
+"settings.pro.title" = "Corvin Pro";
+"settings.pro.learnMore" = "Learn about Pro";
+"settings.pro.appIcon" = "App Icon";
+"settings.pro.defaultIcon" = "Default";
+"settings.pro.proIcon" = "Pro";
+
+// MARK: - Onboarding
+"onboarding.welcome" = "Welcome to Corvin";
+"onboarding.continue" = "Continue";
+"onboarding.skip" = "Skip";
+"onboarding.finish" = "Finish";
+"onboarding.back" = "Back";
+"onboarding.next" = "Next";
+"onboarding.welcome.desc" = "Corvin turns your voice into text right on your Mac, using local speech-recognition models.";
+"onboarding.welcome.accessibility" = "Accessibility API access is required to work.";
+"onboarding.mic.title" = "Microphone Access";
+"onboarding.mic.desc" = "Corvin needs microphone access to record your voice. All data is processed locally.";
+"onboarding.model.title" = "Choose a Model";
+"onboarding.model.hint" = "We recommend %@ — a good balance of quality and speed.";
+"onboarding.model.skip" = "Skip, I'll set it up later";
+"onboarding.test.title" = "Test Recording";
+"onboarding.test.desc" = "Say something to check that it works.";
+"onboarding.test.start" = "Start Recording";
+"onboarding.test.stop" = "Stop";
+"onboarding.test.heard" = "We can hear you! Thanks, let's continue.";
+"onboarding.done.title" = "All set!";
+"onboarding.done.desc" = "Press fn to start recording. Release it — and the text will be inserted into the active field.";
+"onboarding.done.start" = "Start using Corvin";
+
+// MARK: - Status
+"status.idle" = "Ready";
+"status.recording" = "Recording…";
+"status.transcribing" = "Transcribing…";
+"status.inserting" = "Inserting…";
+"status.error" = "Error";
+
+// MARK: - Keyboard Languages
+"keyboard.language.en" = "English";
+"keyboard.language.ru" = "Russian";
+"keyboard.language.uk" = "Ukrainian";
+"keyboard.language.be" = "Belarusian";
+"keyboard.language.pl" = "Polish";
+"keyboard.language.de" = "German";
+"keyboard.language.fr" = "French";
+"keyboard.language.es" = "Spanish";
+"keyboard.language.it" = "Italian";
+"keyboard.language.pt" = "Portuguese";
+"keyboard.language.cs" = "Czech";
+"keyboard.language.sk" = "Slovak";
+"keyboard.language.hu" = "Hungarian";
+"keyboard.language.ro" = "Romanian";
+"keyboard.language.bg" = "Bulgarian";
+"keyboard.language.sr" = "Serbian";
+"keyboard.language.hr" = "Croatian";
+"keyboard.language.sl" = "Slovenian";
+"keyboard.language.lt" = "Lithuanian";
+"keyboard.language.lv" = "Latvian";
+"keyboard.language.et" = "Estonian";
+"keyboard.language.ka" = "Georgian";
+"keyboard.language.hy" = "Armenian";
+"keyboard.language.kk" = "Kazakh";
+"keyboard.language.az" = "Azerbaijani";
+"keyboard.language.uz" = "Uzbek";
+"keyboard.language.tr" = "Turkish";
+"keyboard.language.el" = "Greek";
+"keyboard.language.nl" = "Dutch";
+"keyboard.language.sv" = "Swedish";
+"keyboard.language.da" = "Danish";
+"keyboard.language.fi" = "Finnish";
+"keyboard.language.nb" = "Norwegian";

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  No App Sandbox: Corvin ships via Developer ID + notarization, not the Mac App
+	  Store. Its core features — global fn hotkey (CGEventTap), text insertion via
+	  synthetic Cmd+V (CGEvent.post), and TCC reset via tccutil — are all forbidden
+	  under App Sandbox. Sandbox is only required for the App Store. Microphone access
+	  is granted at runtime via NSMicrophoneUsageDescription + TCC; network access
+	  needs no entitlement outside the sandbox.
+	-->
+</dict>
+</plist>

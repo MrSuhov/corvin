@@ -1,0 +1,2 @@
+app_identifier("com.corvinvoice.ios")
+team_id(ENV["DEVELOPMENT_TEAM"] || "")

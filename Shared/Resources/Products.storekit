@@ -1,0 +1,59 @@
+{
+  "identifier" : "8A3B4C5D-6E7F-8901-2345-6789ABCDEF01",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : true,
+      "internalID" : "PRO001",
+      "localizations" : [
+        {
+          "description" : "Support development and unlock additional models",
+          "displayName" : "Corvin Pro",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "Поддержите разработку и разблокируйте дополнительные модели",
+          "displayName" : "Corvin Pro",
+          "locale" : "ru"
+        }
+      ],
+      "productID" : "com.corvin.pro",
+      "referenceName" : "Corvin Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "1234567890",
+    "_developerTeamID" : "PSLC64QG6Z",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : null,
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "setting" : "automatic-renewal-status"
+      },
+      {
+        "current" : null,
+        "setting" : "billing-retry-period"
+      },
+      {
+        "current" : null,
+        "setting" : "product-fetch"
+      },
+      {
+        "current" : null,
+        "setting" : "purchase"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

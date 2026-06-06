@@ -1,0 +1,75 @@
+name: Deploy macOS to TestFlight
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: testflight-macos
+  cancel-in-progress: true
+
+jobs:
+  build-and-upload:
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone whisper.cpp
+        run: |
+          git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git vendor/whisper.cpp
+
+      - name: Install dependencies
+        run: |
+          brew install cmake xcodegen
+          gem install fastlane
+
+      - name: Cache whisper.cpp build
+        id: whisper-cache
+        uses: actions/cache@v4
+        with:
+          path: vendor/whisper.cpp/build-universal
+          key: whisper-macos-xc26-${{ hashFiles('scripts/build-whisper-macos.sh') }}
+
+      - name: Cache opus build
+        id: opus-cache
+        uses: actions/cache@v4
+        with:
+          path: vendor/opus-build/macos-universal
+          key: opus-macos-xc26-${{ hashFiles('scripts/build-opusfile.sh') }}
+
+      - name: Build opusfile
+        if: steps.opus-cache.outputs.cache-hit != 'true'
+        run: ./scripts/build-opusfile.sh macos
+
+      - name: Install Apple certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+      - name: Build & Upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+        run: fastlane mac testflight_mac
+
+      - name: Cleanup keychain
+        if: always()
+        run: security delete-keychain $RUNNER_TEMP/app-signing.keychain-db 2>/dev/null || true

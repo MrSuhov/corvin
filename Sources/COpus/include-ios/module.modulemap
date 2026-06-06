@@ -1,0 +1,7 @@
+module COpus {
+    header "../include/shim.h"
+    link "opusfile"
+    link "opus"
+    link "ogg"
+    export *
+}

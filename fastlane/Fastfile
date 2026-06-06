@@ -1,0 +1,127 @@
+default_platform(:ios)
+
+platform :mac do
+  desc "Build and upload macOS app to TestFlight"
+  lane :testflight_mac do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: true,
+    )
+
+    current = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "com.corvinvoice.ios",
+      platform: "osx",
+    )
+    new_build = current + 1
+
+    # Build whisper.cpp universal libs
+    project_root = File.expand_path("..")
+    sh("cd '#{project_root}' && ./scripts/build-whisper-macos.sh")
+
+    # Generate Xcode project
+    sh("cd '#{project_root}' && xcodegen generate")
+
+    output_dir = "#{project_root}/build/fastlane-output"
+
+    # Write API key to disk for xcodebuild and altool authentication
+    require "base64"
+    api_key_path = "#{project_root}/build/asc_key.p8"
+    FileUtils.mkdir_p(File.dirname(api_key_path))
+    File.write(api_key_path, Base64.decode64(ENV["ASC_KEY_CONTENT"]))
+
+    # altool looks for the key in ~/.appstoreconnect/private_keys/
+    altool_key_dir = File.expand_path("~/.appstoreconnect/private_keys")
+    FileUtils.mkdir_p(altool_key_dir)
+    FileUtils.cp(api_key_path, "#{altool_key_dir}/AuthKey_#{ENV["ASC_KEY_ID"]}.p8")
+
+    build_mac_app(
+      project: "#{project_root}/Corvin.xcodeproj",
+      scheme: "Corvin",
+      configuration: "Release",
+      export_method: "app-store",
+      destination: "generic/platform=macOS",
+      output_directory: output_dir,
+      xcargs: "-allowProvisioningUpdates -authenticationKeyPath '#{api_key_path}' -authenticationKeyID '#{ENV["ASC_KEY_ID"]}' -authenticationKeyIssuerID '#{ENV["ASC_ISSUER_ID"]}' CURRENT_PROJECT_VERSION=#{new_build}",
+      export_options: {
+        signingStyle: "automatic",
+        teamID: ENV["DEVELOPMENT_TEAM"],
+      },
+    )
+
+    pkg_path = "#{output_dir}/Corvin.pkg"
+
+    # Validate .pkg signature before uploading
+    sh("pkgutil --check-signature '#{pkg_path}'")
+
+    # Validate package with Apple (catches signing issues before upload)
+    sh("xcrun altool --validate-app -f '#{pkg_path}' --apiKey '#{ENV["ASC_KEY_ID"]}' --apiIssuer '#{ENV["ASC_ISSUER_ID"]}' -t macos")
+
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: "com.corvinvoice.ios",
+      skip_waiting_for_build_processing: true,
+      apple_id: ENV["ASC_APPLE_ID"],
+      pkg: pkg_path,
+    )
+  end
+end
+
+platform :ios do
+  desc "Build and upload iOS app to TestFlight"
+  lane :testflight_ios do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: true,
+    )
+
+    current = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "com.corvinvoice.ios",
+      platform: "ios",
+    )
+    new_build = current + 1
+
+    # Build whisper.cpp for iOS
+    project_root = File.expand_path("..")
+    sh("cd '#{project_root}' && ./scripts/build-whisper-ios.sh")
+
+    # Generate Xcode project
+    sh("cd '#{project_root}' && xcodegen generate")
+
+    output_dir = "#{project_root}/build/fastlane-output-ios"
+
+    # Write API key to disk for xcodebuild authentication
+    api_key_path = "#{project_root}/build/asc_key.p8"
+    FileUtils.mkdir_p(File.dirname(api_key_path))
+    require "base64"
+    File.write(api_key_path, Base64.decode64(ENV["ASC_KEY_CONTENT"]))
+
+    build_app(
+      project: "#{project_root}/Corvin.xcodeproj",
+      scheme: "CorviniOS",
+      configuration: "Release",
+      export_method: "app-store",
+      destination: "generic/platform=iOS",
+      output_directory: output_dir,
+      output_name: "CorviniOS.ipa",
+      xcargs: "-allowProvisioningUpdates -authenticationKeyPath '#{api_key_path}' -authenticationKeyID '#{ENV["ASC_KEY_ID"]}' -authenticationKeyIssuerID '#{ENV["ASC_ISSUER_ID"]}' CURRENT_PROJECT_VERSION=#{new_build}",
+      export_options: {
+        signingStyle: "automatic",
+        teamID: ENV["DEVELOPMENT_TEAM"],
+      },
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: "com.corvinvoice.ios",
+      skip_waiting_for_build_processing: true,
+      apple_id: ENV["ASC_APPLE_ID"],
+      ipa: "#{output_dir}/CorviniOS.ipa",
+    )
+  end
+end

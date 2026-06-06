@@ -1,0 +1,180 @@
+name: Corvin
+options:
+  bundleIdPrefix: com.corvin
+  deploymentTarget:
+    macOS: "11.0"
+    iOS: "16.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  KeyboardKit:
+    url: https://github.com/KeyboardKit/KeyboardKit
+    from: "10.4.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
+
+targets:
+  # --- macOS App ---
+  Corvin:
+    type: application
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: macOS
+        excludes:
+          - "**/*.md"
+          - "**/*.h"
+    resources:
+      - path: macOS/Resources
+        excludes:
+          - "*.entitlements"
+      - path: Shared/Resources
+        excludes:
+          - "**/*.swift"
+    dependencies:
+      - package: Sparkle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.corvinvoice.mac
+        INFOPLIST_FILE: macOS/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: macOS/Resources/Corvin.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: macOS/Bridge/whisper-bridge.h
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/vendor/whisper.cpp/include"
+          - "$(SRCROOT)/vendor/whisper.cpp/ggml/include"
+          - "$(SRCROOT)/vendor/opus-build/macos-universal/include"
+          - "$(SRCROOT)/vendor/opus-build/macos-universal/include/opus"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/vendor/whisper.cpp/build-universal"
+          - "$(SRCROOT)/vendor/opus-build/macos-universal/lib"
+        OTHER_LDFLAGS: "-lwhisper -lggml -lggml-base -lggml-cpu -lggml-metal -lggml-blas -lopusfile -lopus -logg -lc++ -framework Accelerate -framework Metal -framework MetalKit"
+        ENABLE_HARDENED_RUNTIME: YES
+        MACOSX_DEPLOYMENT_TARGET: "11.0"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/Sources/CWhisper/include $(SRCROOT)/Sources/COpus/include"
+
+  # --- iOS App ---
+  CorviniOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: iOS
+        excludes:
+          - "**/*.md"
+    resources:
+      - path: iOS/Resources
+        excludes:
+          - "*.entitlements"
+      - path: Shared/Resources
+        excludes:
+          - "**/*.swift"
+    dependencies:
+      - target: CorvinKeyboard
+    postBuildScripts:
+      - name: Embed KeyboardKit frameworks into host app
+        script: |
+          set -euo pipefail
+          DEST="${TARGET_BUILD_DIR}/${PRODUCT_NAME}.app/Frameworks"
+          mkdir -p "$DEST"
+          for FW in KeyboardKit.framework LicenseKit.framework; do
+            SRC="${BUILT_PRODUCTS_DIR}/${FW}"
+            if [ -d "$SRC" ]; then
+              echo "Embedding $FW from $SRC"
+              rsync -a --delete "$SRC" "$DEST/"
+              if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
+                /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements,flags --timestamp=none "$DEST/$FW"
+              elif [ "${CODE_SIGN_IDENTITY:-}" = "-" ] || [ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+                /usr/bin/codesign --force --sign "-" "$DEST/$FW"
+              fi
+            else
+              echo "warning: framework not found at $SRC"
+            fi
+          done
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.corvinvoice.ios
+        INFOPLIST_FILE: iOS/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: iOS/Resources/Corvin.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        TARGETED_DEVICE_FAMILY: "1,2"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/vendor/whisper.cpp/include"
+          - "$(SRCROOT)/vendor/whisper.cpp/ggml/include"
+          - "$(SRCROOT)/vendor/opus-build/ios-universal/include"
+          - "$(SRCROOT)/vendor/opus-build/ios-universal/include/opus"
+        "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]":
+          - "$(SRCROOT)/vendor/whisper.cpp/build-ios-universal"
+          - "$(SRCROOT)/vendor/opus-build/ios-universal/lib"
+        "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]": "$(SRCROOT)/vendor/whisper.cpp/build-ios-sim-universal"
+        OTHER_LDFLAGS: "-lwhisper -lggml -lggml-base -lggml-cpu -lggml-metal -lopusfile -lopus -logg -lc++ -framework Accelerate -framework Metal -framework MetalKit"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/Sources/CWhisper/include-ios $(SRCROOT)/Sources/COpus/include-ios"
+
+  # --- Keyboard Extension ---
+  CorvinKeyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: CorvinKeyboard
+        excludes:
+          - "**/*.md"
+      - path: Shared/Networking
+      - path: Shared/Core/FileLogger.swift
+    dependencies:
+      - package: KeyboardKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.corvinvoice.ios.keyboard
+        INFOPLIST_FILE: CorvinKeyboard/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: CorvinKeyboard/Resources/Keyboard.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+  # --- UI Tests ---
+  CorvinUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/UITests
+    dependencies:
+      - target: CorviniOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.corvinvoice.ios.uitests
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        TEST_HOST: ""
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Corvin:
+    build:
+      targets:
+        Corvin: all
+  CorviniOS:
+    build:
+      targets:
+        CorviniOS: all
+        CorvinKeyboard: all
+    run:
+      config: Debug
+      executable: CorviniOS
+    test:
+      config: Debug
+      targets:
+        - CorvinUITests

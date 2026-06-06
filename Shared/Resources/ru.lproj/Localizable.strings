@@ -1,0 +1,203 @@
+/*
+  Localizable.strings (Russian)
+  Corvin
+*/
+
+// MARK: - Common
+"app.name" = "Corvin";
+"common.cancel" = "Отмена";
+"common.done" = "Готово";
+"common.delete" = "Удалить";
+"common.save" = "Сохранить";
+"common.close" = "Закрыть";
+"common.version" = "Версия";
+"common.request" = "Запросить";
+
+// MARK: - Settings Tabs (macOS)
+"settings.tab.general" = "Основные";
+"settings.tab.models" = "Модели";
+"settings.tab.indicator" = "Индикатор";
+"settings.tab.history" = "История";
+"settings.tab.permissions" = "Разрешения";
+"settings.tab.language" = "Язык";
+"settings.tab.test" = "Тест";
+
+// MARK: - Test Transcription
+"test.recording.title" = "Тест записи";
+"test.recording.hold" = "Удерживайте кнопку для записи";
+"test.recording.holdRelease" = "Запись... Отпустите кнопку для остановки";
+"test.file.title" = "Транскрипция файла";
+"test.file.formats" = "Поддерживаемые форматы: OGG (Telegram), WAV, M4A, MP3, AIFF";
+"test.file.choose" = "Выбрать файл";
+"test.file.chooseMessage" = "Выберите аудиофайл для транскрипции";
+"test.result" = "Результат";
+"test.copy" = "Копировать";
+"test.noModel" = "Модель не загружена";
+
+// MARK: - General Settings
+"settings.general.launchAtLogin" = "Запускать при входе";
+"settings.general.recordingKey" = "Клавиша записи:";
+"settings.general.pressKey" = "Нажмите клавишу…";
+"settings.general.autoInsert" = "Автовставка текста в активное поле";
+"settings.general.copyToClipboard" = "Копировать в буфер обмена";
+
+// MARK: - Indicator Settings
+"settings.indicator.show" = "Показывать индикатор";
+"settings.indicator.position" = "Позиция";
+"settings.indicator.position.bottomRight" = "Снизу справа";
+"settings.indicator.position.bottomLeft" = "Снизу слева";
+"settings.indicator.position.topRight" = "Сверху справа";
+"settings.indicator.position.topLeft" = "Сверху слева";
+"settings.indicator.position.bottomCenter" = "Снизу по центру";
+"settings.indicator.size" = "Размер";
+"settings.indicator.size.compact" = "Компактный";
+"settings.indicator.size.normal" = "Обычный";
+
+// MARK: - History Settings
+"settings.history.autoCleanup" = "Автоочистка";
+"settings.history.period.week" = "Неделя";
+"settings.history.period.month" = "Месяц";
+"settings.history.period.halfYear" = "Полгода";
+"settings.history.period.never" = "Никогда";
+"settings.history.clearAll" = "Очистить всю историю";
+
+// MARK: - Permissions
+"settings.permissions.accessibility" = "Универсальный доступ";
+"settings.permissions.microphone" = "Микрофон";
+"settings.permissions.resetAll" = "Сбросить все разрешения";
+"settings.permissions.resetHint" = "Используйте сброс, если разрешения перестали работать после обновления";
+
+// MARK: - Language Settings
+"settings.language.appLanguage" = "Язык приложения";
+"settings.language.useSystem" = "Системный язык";
+"settings.language.keyboardLanguages" = "Языки клавиатуры";
+"settings.language.selectKeyboardLanguages" = "Выбрать языки";
+"settings.language.keyboardHint" = "Выберите языки для переключения клавиатуры. Изменения применятся после перезапуска клавиатуры.";
+"settings.language.atLeastOne" = "Должен быть выбран хотя бы один язык";
+"settings.language.restartRequired" = "Некоторые изменения могут потребовать перезапуска приложения.";
+
+// MARK: - iOS Settings
+"settings.title" = "Настройки";
+"settings.diagnostics" = "Диагностика";
+"settings.serverLogs" = "Логи сервера";
+"settings.about" = "О приложении";
+"settings.transcription" = "Транскрипция";
+"settings.autoCleanup.header" = "Автоочистка истории";
+"settings.autoCleanup.period" = "Период";
+"settings.autoCleanup.never" = "Никогда";
+"settings.autoCleanup.week" = "Неделя";
+"settings.autoCleanup.month" = "Месяц";
+"settings.autoCleanup.halfYear" = "Полгода";
+"settings.diagnostics.header" = "Диагностика";
+"settings.diagnostics.serverLogs" = "Логи сервера";
+"settings.about.header" = "О приложении";
+"settings.about.version" = "Версия";
+"settings.about.transcription" = "Транскрипция";
+
+// MARK: - Models
+"models.quality.basic" = "базовое";
+"models.quality.normal" = "нормальное";
+"models.quality.good" = "хорошее";
+"models.quality.excellent" = "отличное";
+"models.quality.best" = "лучшее";
+"models.quality.excellent_compressed" = "отличное (сжатая)";
+"models.quality.best_compressed" = "лучшее (сжатая)";
+"models.quality.best_fast" = "лучшее (быстрая)";
+"models.quality.english_optimized" = "оптимизирована для English";
+"models.download" = "Скачать";
+"models.downloading" = "Загрузка…";
+"models.active" = "Активна";
+"models.select" = "Выбрать";
+"models.delete" = "Удалить";
+"models.recommended" = "Рекомендуется";
+"models.error.downloadFailed" = "Не удалось скачать модель";
+"models.error.checksumMismatch" = "Контрольная сумма не совпадает";
+"models.quality" = "Качество";
+"models.available" = "Доступные модели";
+"models.section.free" = "Модели";
+"models.section.pro" = "Pro модели";
+"models.pro.locked" = "Доступно с Corvin Pro";
+"models.intel.recommendation" = "Intel Mac: рекомендуется tiny, base или small";
+
+// MARK: - Pro
+"pro.title" = "Corvin Pro";
+"pro.subtitle" = "Поддержите разработку";
+"pro.description" = "Corvin полностью бесплатен. Pro — это просто способ поблагодарить ☺️\nИ сменить иконку приложения, конечно! 😂";
+"pro.description.macos" = "Corvin полностью бесплатен. Pro — это просто способ поблагодарить ☺️";
+"pro.feature.models" = "Дополнительные модели распознавания";
+"pro.feature.icon" = "Эксклюзивная иконка приложения";
+"pro.buy" = "Купить за %@";
+"pro.restore" = "Восстановить покупку";
+"pro.activated" = "Pro активирован";
+"pro.thankYou" = "Спасибо за поддержку!";
+"pro.thankYou.detail" = "Вы прекрасны. Наслаждайтесь Corvin Pro! 🎉";
+"settings.pro.title" = "Corvin Pro";
+"settings.pro.learnMore" = "Узнать о Pro";
+"settings.pro.appIcon" = "Иконка приложения";
+"settings.pro.defaultIcon" = "Стандартная";
+"settings.pro.proIcon" = "Pro";
+
+// MARK: - Onboarding
+"onboarding.welcome" = "Добро пожаловать в Corvin";
+"onboarding.continue" = "Продолжить";
+"onboarding.skip" = "Пропустить";
+"onboarding.finish" = "Готово";
+"onboarding.back" = "Назад";
+"onboarding.next" = "Далее";
+"onboarding.welcome.desc" = "Corvin превращает голос в текст прямо на вашем Mac, используя локальные модели распознавания речи.";
+"onboarding.welcome.accessibility" = "Для работы потребуется доступ к Accessibility API.";
+"onboarding.mic.title" = "Доступ к микрофону";
+"onboarding.mic.desc" = "Corvin нужен доступ к микрофону для записи голоса. Все данные обрабатываются локально.";
+"onboarding.model.title" = "Выберите модель";
+"onboarding.model.hint" = "Рекомендуем %@ — хороший баланс качества и скорости.";
+"onboarding.model.skip" = "Пропустить, настрою позже";
+"onboarding.test.title" = "Тестовая запись";
+"onboarding.test.desc" = "Скажите что-нибудь, чтобы проверить работу.";
+"onboarding.test.start" = "Начать запись";
+"onboarding.test.stop" = "Остановить";
+"onboarding.test.heard" = "Вас слышно! Спасибо, продолжаем.";
+"onboarding.done.title" = "Готово!";
+"onboarding.done.desc" = "Нажмите fn чтобы начать запись. Отпустите — и текст будет вставлен в активное поле.";
+"onboarding.done.start" = "Начать использовать Corvin";
+
+// MARK: - Status
+"status.idle" = "Готов";
+"status.recording" = "Запись…";
+"status.transcribing" = "Распознавание…";
+"status.inserting" = "Вставка…";
+"status.error" = "Ошибка";
+
+// MARK: - Keyboard Languages
+"keyboard.language.en" = "Английский";
+"keyboard.language.ru" = "Русский";
+"keyboard.language.uk" = "Украинский";
+"keyboard.language.be" = "Белорусский";
+"keyboard.language.pl" = "Польский";
+"keyboard.language.de" = "Немецкий";
+"keyboard.language.fr" = "Французский";
+"keyboard.language.es" = "Испанский";
+"keyboard.language.it" = "Итальянский";
+"keyboard.language.pt" = "Португальский";
+"keyboard.language.cs" = "Чешский";
+"keyboard.language.sk" = "Словацкий";
+"keyboard.language.hu" = "Венгерский";
+"keyboard.language.ro" = "Румынский";
+"keyboard.language.bg" = "Болгарский";
+"keyboard.language.sr" = "Сербский";
+"keyboard.language.hr" = "Хорватский";
+"keyboard.language.sl" = "Словенский";
+"keyboard.language.lt" = "Литовский";
+"keyboard.language.lv" = "Латышский";
+"keyboard.language.et" = "Эстонский";
+"keyboard.language.ka" = "Грузинский";
+"keyboard.language.hy" = "Армянский";
+"keyboard.language.kk" = "Казахский";
+"keyboard.language.az" = "Азербайджанский";
+"keyboard.language.uz" = "Узбекский";
+"keyboard.language.tr" = "Турецкий";
+"keyboard.language.el" = "Греческий";
+"keyboard.language.nl" = "Нидерландский";
+"keyboard.language.sv" = "Шведский";
+"keyboard.language.da" = "Датский";
+"keyboard.language.fi" = "Финский";
+"keyboard.language.nb" = "Норвежский";

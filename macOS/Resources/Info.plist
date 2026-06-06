@@ -47,7 +47,7 @@
     <!-- EdDSA (Ed25519) public key. Replace REPLACE_WITH_PUBLIC_ED_KEY with the
          value printed by `generate_keys` (the private key stays in your Keychain). -->
     <key>SUPublicEDKey</key>
-    <string>REPLACE_WITH_PUBLIC_ED_KEY</string>
+    <string>xJ1e4C9Vjeur90jhhWpM4o8ZoJxITrfvAkqf6gVWd8Y=</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
     <!-- Check once per day (seconds). -->

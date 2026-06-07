@@ -14,7 +14,7 @@
         <string>ru</string>
     </array>
     <key>CFBundleIdentifier</key>
-    <string>com.corvinvoice.mac</string>
+    <string>com.corvinvoice.ios</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>CFBundleShortVersionString</key>

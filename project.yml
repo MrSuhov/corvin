@@ -43,7 +43,7 @@ targets:
       - package: Sparkle
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.corvinvoice.mac
+        PRODUCT_BUNDLE_IDENTIFIER: com.corvinvoice.ios
         INFOPLIST_FILE: macOS/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: macOS/Resources/Corvin.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: macOS/Bridge/whisper-bridge.h

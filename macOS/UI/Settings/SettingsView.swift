@@ -564,10 +564,51 @@ struct PermissionsSettingsView: View {
     }
 
     private func requestMicrophoneAccess() {
-        AVCaptureDevice.requestAccess(for: .audio) { granted in
-            DispatchQueue.main.async {
-                hasMicrophone = granted
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+
+        switch status {
+        case .notDetermined:
+            // First time: the system prompt will appear.
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async {
+                    hasMicrophone = granted
+                    if !granted { openMicrophonePrivacySettings() }
+                }
             }
+
+        case .denied, .restricted:
+            // Already denied: requestAccess would silently no-op (no prompt).
+            // Reset the stale TCC entry so the system prompt works again,
+            // mirroring requestAccessibility().
+            let bundleId = Bundle.main.bundleIdentifier ?? "com.corvinvoice.mac"
+            let reset = Process()
+            reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            reset.arguments = ["reset", "Microphone", bundleId]
+            try? reset.run()
+            reset.waitUntilExit()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                AVCaptureDevice.requestAccess(for: .audio) { granted in
+                    DispatchQueue.main.async {
+                        hasMicrophone = granted
+                        // If tccutil couldn't reset (e.g. MDM-managed), fall back
+                        // to opening the privacy pane so the user can toggle it.
+                        if !granted { openMicrophonePrivacySettings() }
+                    }
+                }
+            }
+
+        case .authorized:
+            hasMicrophone = true
+
+        @unknown default:
+            break
+        }
+    }
+
+    private func openMicrophonePrivacySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
         }
     }
 }

@@ -52,6 +52,19 @@ mkdir -p "$APP_DIR/MacOS" "$APP_DIR/Resources/Models"
 
 cp "$BINARY" "$APP_DIR/MacOS/"
 cp "$PROJECT_DIR/macOS/Resources/Info.plist" "$APP_DIR/"
+
+# swift build does not substitute Xcode build-setting placeholders, so the copied
+# Info.plist still contains $(MARKETING_VERSION)/$(CURRENT_PROJECT_VERSION). Fill
+# them in here. MARKETING_VERSION (human-facing) is read from project.yml; the
+# build number is a timestamp so Sparkle's sparkle:version always increases
+# monotonically across releases.
+MARKETING_VERSION=$(grep 'MARKETING_VERSION:' "$PROJECT_DIR/project.yml" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+BUILD_VERSION=$(date +%Y%m%d%H%M)
+echo "  Version: $MARKETING_VERSION (build $BUILD_VERSION)"
+/usr/bin/sed -i '' \
+    -e "s/\$(MARKETING_VERSION)/$MARKETING_VERSION/g" \
+    -e "s/\$(CURRENT_PROJECT_VERSION)/$BUILD_VERSION/g" \
+    "$APP_DIR/Info.plist"
 cp "$PROJECT_DIR/macOS/Resources/AppIcon.icns" "$APP_DIR/Resources/" 2>/dev/null || true
 cp "$PROJECT_DIR/macOS/Resources/StatusBarIcon.png" "$APP_DIR/Resources/" 2>/dev/null || true
 cp "$PROJECT_DIR/macOS/Resources/StatusBarIcon@2x.png" "$APP_DIR/Resources/" 2>/dev/null || true

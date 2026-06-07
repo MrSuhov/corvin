@@ -6,9 +6,15 @@
 	  No App Sandbox: Corvin ships via Developer ID + notarization, not the Mac App
 	  Store. Its core features — global fn hotkey (CGEventTap), text insertion via
 	  synthetic Cmd+V (CGEvent.post), and TCC reset via tccutil — are all forbidden
-	  under App Sandbox. Sandbox is only required for the App Store. Microphone access
-	  is granted at runtime via NSMicrophoneUsageDescription + TCC; network access
-	  needs no entitlement outside the sandbox.
+	  under App Sandbox. Sandbox is only required for the App Store.
+
+	  Hardened Runtime IS enabled (codesign --options runtime), required for
+	  notarization. Under Hardened Runtime the microphone is gated by an entitlement
+	  even WITHOUT the sandbox: without com.apple.security.device.audio-input the
+	  system blocks capture and AVCaptureDevice.requestAccess returns false with no
+	  consent prompt. NSMicrophoneUsageDescription alone is not sufficient here.
 	-->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 </dict>
 </plist>

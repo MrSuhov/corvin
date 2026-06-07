@@ -520,7 +520,7 @@ struct PermissionsSettingsView: View {
 
     private func requestAccessibility() {
         // Reset stale TCC entry so the system prompt works again
-        let bundleId = Bundle.main.bundleIdentifier ?? "com.corvinvoice.mac"
+        let bundleId = Bundle.main.bundleIdentifier ?? "com.corvinvoice.ios"
         let reset = Process()
         reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
         reset.arguments = ["reset", "Accessibility", bundleId]
@@ -535,7 +535,7 @@ struct PermissionsSettingsView: View {
     }
 
     private func resetAllPermissions() {
-        let bundleId = Bundle.main.bundleIdentifier ?? "com.corvinvoice.mac"
+        let bundleId = Bundle.main.bundleIdentifier ?? "com.corvinvoice.ios"
 
         // Reset Accessibility
         let axReset = Process()
@@ -580,7 +580,7 @@ struct PermissionsSettingsView: View {
             // Already denied: requestAccess would silently no-op (no prompt).
             // Reset the stale TCC entry so the system prompt works again,
             // mirroring requestAccessibility().
-            let bundleId = Bundle.main.bundleIdentifier ?? "com.corvinvoice.mac"
+            let bundleId = Bundle.main.bundleIdentifier ?? "com.corvinvoice.ios"
             let reset = Process()
             reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
             reset.arguments = ["reset", "Microphone", bundleId]

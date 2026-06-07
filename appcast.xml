@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Corvin</title>
+        <item>
+            <title>1.0.0</title>
+            <pubDate>Sun, 07 Jun 2026 09:40:12 +0300</pubDate>
+            <sparkle:version>202606070938</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin-1.0.0.dmg" length="451338888" type="application/octet-stream" sparkle:edSignature="Inhtv782T5ik4bj0F+ny/0ckbB7SGf5Wu8mjSXEzlrNYmLRNV9FssRX59ymf1uJXJLuytHaeP7JCzhCuj7lNBw=="/>
+        </item>
+    </channel>
+</rss>

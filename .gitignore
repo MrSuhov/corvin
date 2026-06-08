@@ -45,3 +45,6 @@ test-results.log
 
 # Issues
 issues/
+
+# Release staging
+dist/

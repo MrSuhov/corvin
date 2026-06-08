@@ -8,11 +8,12 @@
 	  synthetic Cmd+V (CGEvent.post), and TCC reset via tccutil — are all forbidden
 	  under App Sandbox. Sandbox is only required for the App Store.
 
-	  Hardened Runtime IS enabled (codesign --options runtime), required for
+	  Hardened Runtime IS enabled (codesign options runtime), required for
 	  notarization. Under Hardened Runtime the microphone is gated by an entitlement
 	  even WITHOUT the sandbox: without com.apple.security.device.audio-input the
 	  system blocks capture and AVCaptureDevice.requestAccess returns false with no
 	  consent prompt. NSMicrophoneUsageDescription alone is not sufficient here.
+	  (Avoid double-hyphens in this comment: AMFIUnserializeXML rejects them.)
 	-->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>

@@ -27,7 +27,7 @@
 "test.recording.hold" = "Удерживайте кнопку для записи";
 "test.recording.holdRelease" = "Запись... Отпустите кнопку для остановки";
 "test.file.title" = "Транскрипция файла";
-"test.file.formats" = "Поддерживаемые форматы: OGG (Telegram), WAV, M4A, MP3, AIFF";
+"test.file.formats" = "Поддерживаемые форматы: OGG (Telegram), WEBM, WAV, M4A, MP3, AIFF";
 "test.file.choose" = "Выбрать файл";
 "test.file.chooseMessage" = "Выберите аудиофайл для транскрипции";
 "test.result" = "Результат";

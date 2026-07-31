@@ -7,12 +7,14 @@ enum AudioFileDecoder {
     enum DecoderError: LocalizedError {
         case cannotOpenFile(String)
         case conversionFailed(String)
+        case unsupportedCodec(String)
         case emptyResult
 
         var errorDescription: String? {
             switch self {
             case .cannotOpenFile(let path): return "Не удалось открыть файл: \(path)"
             case .conversionFailed(let reason): return "Ошибка конвертации: \(reason)"
+            case .unsupportedCodec(let codec): return "Неподдерживаемый аудиокодек: \(codec)"
             case .emptyResult: return "Файл не содержит аудиоданных"
             }
         }
@@ -76,18 +78,113 @@ enum AudioFileDecoder {
             throw DecoderError.emptyResult
         }
 
-        // Downsample 48kHz → 16kHz (ratio 3:1)
+        let pcmData = downsample48kToPCM16k(allSamples)
+        flog("decodeOggOpus: output \(pcmData.count) bytes (\(pcmData.count / 2) samples at 16kHz, ~\(String(format: "%.1f", Double(pcmData.count) / 2.0 / 16000.0))s)")
+        return pcmData
+    }
+
+    /// Decode the audio track of a WebM/Matroska file to 16kHz Int16 mono PCM.
+    /// Video tracks are ignored; only Opus audio is supported (the codec WebM
+    /// audio is recorded with in practice).
+    static func decodeWebM(url: URL) throws -> Data {
+        flog("decodeWebM: opening \(url.lastPathComponent)")
+
+        let fileData: Data
+        do {
+            fileData = try Data(contentsOf: url)
+        } catch {
+            flog("decodeWebM: FAILED to read file: \(error)")
+            throw DecoderError.cannotOpenFile(error.localizedDescription)
+        }
+        flog("decodeWebM: read \(fileData.count) bytes into memory")
+
+        let demuxed = try WebMDemuxer.demux(data: fileData)
+        let track = demuxed.track
+
+        guard track.codecID == "A_OPUS" else {
+            flog("decodeWebM: unsupported codec \(track.codecID)")
+            throw DecoderError.unsupportedCodec(track.codecID)
+        }
+        guard !demuxed.packets.isEmpty else { throw DecoderError.emptyResult }
+
+        // OpusHead (RFC 7845 §5.1) lives in CodecPrivate.
+        var channels = min(max(track.channels, 1), 2)
+        var preSkip = 0
+        if let head = track.codecPrivate, head.count >= 19,
+           head.prefix(8).elementsEqual(Array("OpusHead".utf8)) {
+            let h = [UInt8](head)
+            channels = Int(h[9])
+            preSkip = Int(h[10]) | (Int(h[11]) << 8)
+            let mappingFamily = h[18]
+            guard mappingFamily == 0 else {
+                throw DecoderError.unsupportedCodec("Opus channel mapping family \(mappingFamily)")
+            }
+            guard channels == 1 || channels == 2 else {
+                throw DecoderError.unsupportedCodec("Opus \(channels) channels")
+            }
+        }
+        flog("decodeWebM: opus channels=\(channels), preSkip=\(preSkip), packets=\(demuxed.packets.count)")
+
+        var err: Int32 = 0
+        guard let decoder = opus_decoder_create(48000, Int32(channels), &err), err == OPUS_OK else {
+            throw DecoderError.conversionFailed("opus_decoder_create failed (\(err))")
+        }
+        defer { opus_decoder_destroy(decoder) }
+
+        // 5760 frames == 120ms at 48kHz, the largest Opus packet duration.
+        let maxFrames = 5760
+        var buf = [Float](repeating: 0, count: maxFrames * channels)
+        var allSamples = [Float]()
+        allSamples.reserveCapacity(demuxed.packets.count * 960)
+        var failedPackets = 0
+
+        for packet in demuxed.packets {
+            let decoded: Int32 = packet.withUnsafeBytes { raw -> Int32 in
+                guard let ptr = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return -1 }
+                return opus_decode_float(decoder, ptr, Int32(packet.count), &buf, Int32(maxFrames), 0)
+            }
+            guard decoded > 0 else {
+                failedPackets += 1
+                continue
+            }
+            let frameCount = Int(decoded)
+            if channels == 1 {
+                allSamples.append(contentsOf: buf[0..<frameCount])
+            } else {
+                for i in 0..<frameCount {
+                    allSamples.append((buf[i * 2] + buf[i * 2 + 1]) / 2.0)
+                }
+            }
+        }
+
+        if failedPackets > 0 {
+            flog("decodeWebM: \(failedPackets) packet(s) failed to decode")
+        }
+
+        // Drop the encoder delay so the transcript is not preceded by garbage.
+        if preSkip > 0 && preSkip < allSamples.count {
+            allSamples.removeFirst(preSkip)
+        }
+
+        guard !allSamples.isEmpty else { throw DecoderError.emptyResult }
+        flog("decodeWebM: decoded \(allSamples.count) samples at 48kHz")
+
+        let pcmData = downsample48kToPCM16k(allSamples)
+        flog("decodeWebM: output \(pcmData.count) bytes (\(pcmData.count / 2) samples at 16kHz, ~\(String(format: "%.1f", Double(pcmData.count) / 2.0 / 16000.0))s)")
+        return pcmData
+    }
+
+    /// 48kHz mono float → 16kHz mono Int16 (decimate by 3).
+    private static func downsample48kToPCM16k(_ samples: [Float]) -> Data {
         let step = 3
         var pcmData = Data()
-        pcmData.reserveCapacity(allSamples.count / step * MemoryLayout<Int16>.size)
+        pcmData.reserveCapacity(samples.count / step * MemoryLayout<Int16>.size)
 
-        for i in stride(from: 0, to: allSamples.count, by: step) {
-            let clamped = max(-1.0, min(1.0, allSamples[i]))
+        for i in stride(from: 0, to: samples.count, by: step) {
+            let clamped = max(-1.0, min(1.0, samples[i]))
             var sample = Int16(clamped * 32767.0)
             withUnsafeBytes(of: &sample) { pcmData.append(contentsOf: $0) }
         }
-
-        flog("decodeOggOpus: output \(pcmData.count) bytes (\(pcmData.count / 2) samples at 16kHz, ~\(String(format: "%.1f", Double(pcmData.count) / 2.0 / 16000.0))s)")
         return pcmData
     }
 
@@ -100,6 +197,11 @@ enum AudioFileDecoder {
         // Trust magic bytes over the extension — Telegram files often lie.
         if sniffed == "ogg" || ext == "ogg" || ext == "opus" || ext == "oga" {
             return try decodeOggOpus(url: url)
+        }
+
+        // WebM/Matroska — AVAudioFile has no idea what these are either.
+        if sniffed == "webm" || ext == "webm" || ext == "weba" || ext == "mkv" || ext == "mka" {
+            return try decodeWebM(url: url)
         }
 
         // If the extension disagrees with the actual container, AVAudioFile's
@@ -190,6 +292,8 @@ enum AudioFileDecoder {
         if match(0, [0x63, 0x61, 0x66, 0x66]) { return "caf" }
         // OggS
         if match(0, [0x4F, 0x67, 0x67, 0x53]) { return "ogg" }
+        // EBML header — WebM / Matroska
+        if match(0, [0x1A, 0x45, 0xDF, 0xA3]) { return "webm" }
         // ID3 tag (MP3)
         if match(0, [0x49, 0x44, 0x33]) { return "mp3" }
         // MPEG frame sync (0xFFEx) — raw MP3

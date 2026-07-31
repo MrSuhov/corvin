@@ -173,7 +173,8 @@ struct StatusView: View {
                 }
                 .fileImporter(
                     isPresented: $showingFilePicker,
-                    allowedContentTypes: [.audio] + [UTType(filenameExtension: "ogg"), UTType(filenameExtension: "opus")].compactMap { $0 },
+                    allowedContentTypes: [.audio] + [UTType(filenameExtension: "ogg"), UTType(filenameExtension: "opus"),
+                                                       UTType(filenameExtension: "webm"), UTType(filenameExtension: "weba")].compactMap { $0 },
                     allowsMultipleSelection: false
                 ) { result in
                     switch result {

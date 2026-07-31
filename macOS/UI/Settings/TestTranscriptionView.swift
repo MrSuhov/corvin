@@ -185,7 +185,8 @@ struct TestTranscriptionView: View {
         }
 
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.audio] + [UTType(filenameExtension: "ogg"), UTType(filenameExtension: "opus")].compactMap { $0 }
+        panel.allowedContentTypes = [.audio] + [UTType(filenameExtension: "ogg"), UTType(filenameExtension: "opus"),
+                                        UTType(filenameExtension: "webm"), UTType(filenameExtension: "weba")].compactMap { $0 }
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.message = "test.file.chooseMessage".localized

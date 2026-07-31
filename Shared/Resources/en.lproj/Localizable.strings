@@ -27,7 +27,7 @@
 "test.recording.hold" = "Hold the button to record";
 "test.recording.holdRelease" = "Recording... Release to stop";
 "test.file.title" = "File Transcription";
-"test.file.formats" = "Supported formats: OGG (Telegram), WAV, M4A, MP3, AIFF";
+"test.file.formats" = "Supported formats: OGG (Telegram), WEBM, WAV, M4A, MP3, AIFF";
 "test.file.choose" = "Choose File";
 "test.file.chooseMessage" = "Select an audio file for transcription";
 "test.result" = "Result";

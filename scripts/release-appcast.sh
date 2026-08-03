@@ -25,7 +25,9 @@ if [ -n "${SPARKLE_BIN:-}" ] && [ -x "$SPARKLE_BIN/generate_appcast" ]; then
 elif command -v generate_appcast >/dev/null 2>&1; then
     GEN="$(command -v generate_appcast)"
 else
-    GEN=$(/usr/bin/find "$PROJECT_DIR/.build" /opt/homebrew/Caskroom/sparkle 2>/dev/null -type f -name generate_appcast | head -1)
+    # Search paths that may not exist, so swallow find's failure — with
+    # `set -e` + pipefail a missing Caskroom dir would abort the script.
+    GEN=$(/usr/bin/find "$PROJECT_DIR/.build" /opt/homebrew/Caskroom/sparkle -type f -name generate_appcast 2>/dev/null | head -1 || true)
 fi
 if [ -z "$GEN" ]; then
     echo "ERROR: generate_appcast not found."

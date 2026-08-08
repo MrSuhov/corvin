@@ -51,7 +51,7 @@ class AudioCaptureService {
         // Install tap to capture audio data
         let busIndex: AVAudioNodeBus = 0
         let nativeFormat = inputNode.outputFormat(forBus: busIndex)
-        flog("startCapture: nativeFormat=\(nativeFormat.sampleRate)Hz, \(nativeFormat.channelCount)ch, common=\(nativeFormat.commonFormat.rawValue)")
+        flog("startCapture: nativeFormat=\(nativeFormat.sampleRate)Hz, \(nativeFormat.channelCount)ch, interleaved=\(nativeFormat.isInterleaved), common=\(nativeFormat.commonFormat.rawValue)")
 
         // Intermediate format: mono Float32 at native sample rate.
         // We manually downmix multi-channel → mono ourselves because AVAudioConverter
@@ -73,7 +73,6 @@ class AudioCaptureService {
 
             let frameCount = Int(buffer.frameLength)
             guard frameCount > 0 else { return }
-            let channelCount = Int(buffer.format.channelCount)
 
             // Manual mono downmix (sum of channels / N) into a fresh Float32 mono buffer.
             guard let monoBuffer = AVAudioPCMBuffer(
@@ -88,25 +87,15 @@ class AudioCaptureService {
                 if tapBufferCount == 0 { flog("startCapture: monoBuffer has no floatChannelData") }
                 return
             }
-            for i in 0..<frameCount { monoOut[i] = 0 }
-
-            if let floats = buffer.floatChannelData {
-                for ch in 0..<channelCount {
-                    let ptr = floats[ch]
-                    for i in 0..<frameCount { monoOut[i] += ptr[i] }
-                }
-            } else if let ints = buffer.int16ChannelData {
-                for ch in 0..<channelCount {
-                    let ptr = ints[ch]
-                    for i in 0..<frameCount { monoOut[i] += Float(ptr[i]) / 32768.0 }
-                }
-            } else {
+            guard AudioCaptureService.downmixToMono(buffer, into: monoOut, frameCount: frameCount) else {
                 if tapBufferCount == 0 { flog("startCapture: unsupported buffer format (no float/int16 channels)") }
                 return
             }
-            if channelCount > 1 {
-                let scale = 1.0 / Float(channelCount)
-                for i in 0..<frameCount { monoOut[i] *= scale }
+
+            if tapBufferCount == 0 {
+                var peak: Float = 0
+                for i in 0..<frameCount { peak = max(peak, abs(monoOut[i])) }
+                flog("startCapture: first tap buffer, frames=\(frameCount), stride=\(buffer.stride), monoPeak=\(String(format: "%.4f", peak))")
             }
 
             // Live metering: RMS of the clean mono signal, delivered on the main queue.
@@ -157,6 +146,69 @@ class AudioCaptureService {
         } catch {
             flog("startCapture: engine.start() FAILED: \(error)")
         }
+    }
+
+    /// Averages every channel of `buffer` into `monoOut`, returning false when the
+    /// buffer holds neither Float32 nor Int16 samples.
+    ///
+    /// The channel layout matters and is easy to get wrong. For a *non*-interleaved
+    /// buffer, `floatChannelData` points at one array per channel. For an
+    /// **interleaved** one it points at a single array, and frames sit side by
+    /// side: L R L R … reached with `buffer.stride`.
+    ///
+    /// Indexing `floatChannelData[1]` on an interleaved buffer therefore reads
+    /// past the end of a one-element pointer array — undefined behaviour that
+    /// yields a different garbage signal on every run rather than a clean crash.
+    /// It only bites on multi-channel input, which is why a 1-channel mic worked
+    /// and a 2-channel one produced audio whose amplitude jumped between fully
+    /// saturated and near-silent, transcribing to nothing either way.
+    static func downmixToMono(
+        _ buffer: AVAudioPCMBuffer,
+        into monoOut: UnsafeMutablePointer<Float>,
+        frameCount: Int
+    ) -> Bool {
+        let channelCount = Int(buffer.format.channelCount)
+        let stride = buffer.stride
+
+        if let floats = buffer.floatChannelData {
+            if buffer.format.isInterleaved {
+                let ptr = floats[0]
+                for i in 0..<frameCount {
+                    var sum: Float = 0
+                    for ch in 0..<channelCount { sum += ptr[i * stride + ch] }
+                    monoOut[i] = sum
+                }
+            } else {
+                for i in 0..<frameCount { monoOut[i] = 0 }
+                for ch in 0..<channelCount {
+                    let ptr = floats[ch]
+                    for i in 0..<frameCount { monoOut[i] += ptr[i] }
+                }
+            }
+        } else if let ints = buffer.int16ChannelData {
+            if buffer.format.isInterleaved {
+                let ptr = ints[0]
+                for i in 0..<frameCount {
+                    var sum: Float = 0
+                    for ch in 0..<channelCount { sum += Float(ptr[i * stride + ch]) / 32768.0 }
+                    monoOut[i] = sum
+                }
+            } else {
+                for i in 0..<frameCount { monoOut[i] = 0 }
+                for ch in 0..<channelCount {
+                    let ptr = ints[ch]
+                    for i in 0..<frameCount { monoOut[i] += Float(ptr[i]) / 32768.0 }
+                }
+            }
+        } else {
+            return false
+        }
+
+        if channelCount > 1 {
+            let scale = 1.0 / Float(channelCount)
+            for i in 0..<frameCount { monoOut[i] *= scale }
+        }
+        return true
     }
 
     func stopCapture() -> Data {

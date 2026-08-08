@@ -3,7 +3,7 @@ import ApplicationServices
 import UniformTypeIdentifiers
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, models, indicator, history, language, pro, permissions, test
+    case general, models, layout, indicator, history, language, pro, permissions, transcription
 
     var id: String { rawValue }
 
@@ -11,12 +11,13 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "settings.tab.general".localized
         case .models: return "settings.tab.models".localized
+        case .layout: return "settings.tab.layout".localized
         case .indicator: return "settings.tab.indicator".localized
         case .history: return "settings.tab.history".localized
         case .language: return "settings.tab.language".localized
         case .pro: return "settings.pro.title".localized
         case .permissions: return "settings.tab.permissions".localized
-        case .test: return "settings.tab.test".localized
+        case .transcription: return "settings.tab.transcription".localized
         }
     }
 
@@ -24,12 +25,13 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "gear"
         case .models: return "cpu"
+        case .layout: return "keyboard"
         case .indicator: return "bubble.left"
         case .history: return "clock"
         case .language: return "globe"
         case .pro: return "star.fill"
         case .permissions: return "lock.shield"
-        case .test: return "mic.badge.plus"
+        case .transcription: return "mic.badge.plus"
         }
     }
 }
@@ -114,6 +116,7 @@ struct SettingsView: View {
             switch selection.tab {
             case .general: GeneralSettingsView()
             case .models: ModelSettingsView()
+            case .layout: LayoutSwitchSettingsView()
             case .indicator: IndicatorSettingsView()
             case .history: HistorySettingsView()
             case .language: LanguageSettingsView()
@@ -126,7 +129,7 @@ struct SettingsView: View {
                     EmptyView()
                 }
             case .permissions: PermissionsSettingsView()
-            case .test: TestTranscriptionView()
+            case .transcription: TestTranscriptionView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -297,6 +300,57 @@ struct ModelSettingsView: View {
     var body: some View {
         ModelManagerView()
             .environmentObject(modelManager)
+    }
+}
+
+// MARK: - Layout switching
+
+struct LayoutSwitchSettingsView: View {
+    @AppStorage("layoutSwitchEnabled") private var layoutSwitchEnabled = false
+    @AppStorage("layoutSwitchChangesInputSource") private var changesInputSource = true
+    @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 63
+
+    /// 58 / 61 are the left and right Option keys. If push-to-talk is bound to
+    /// one of them the tap detector stays off — the same key cannot mean both
+    /// "record" and "switch layout".
+    private var optionTakenByRecording: Bool {
+        hotkeyKeyCode == 58 || hotkeyKeyCode == 61
+    }
+
+    var body: some View {
+        Form {
+            Toggle("settings.layout.enabled".localized, isOn: $layoutSwitchEnabled)
+
+            Text("settings.layout.hint".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if optionTakenByRecording {
+                Label("settings.layout.optionConflict".localized, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            Toggle("settings.layout.changeInputSource".localized, isOn: $changesInputSource)
+                .disabled(!layoutSwitchEnabled)
+
+            Text("settings.layout.changeInputSource.hint".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Text("settings.layout.compatibility".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding()
     }
 }
 

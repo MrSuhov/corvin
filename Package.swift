@@ -76,7 +76,9 @@ let package = Package(
                     "-logg",
                     // Let the executable find the embedded Sparkle.framework that
                     // build-dmg.sh copies into Corvin.app/Contents/Frameworks.
-                    "-rpath", "@executable_path/../Frameworks",
+                    // Must go through -Xlinker: the Swift driver rejects a bare
+                    // -rpath ("error: unknown argument").
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
                 ]),
                 .linkedLibrary("c++"),
                 .linkedFramework("Accelerate"),

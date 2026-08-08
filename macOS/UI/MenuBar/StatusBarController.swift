@@ -9,6 +9,12 @@ class StatusBarController: NSObject {
     private let historyStore: HistoryStore
     private weak var appDelegate: AppDelegate?
 
+    /// Mirrors `UpdaterService.pendingUpdateVersion`; drives both the badge on
+    /// the icon and the "Обновить" menu item.
+    private var pendingUpdateVersion: String?
+    private var lastState: SessionState = .idle
+    private var cancellables = Set<AnyCancellable>()
+
     init(sessionManager: SessionManager, modelManager: ModelManager, historyStore: HistoryStore, appDelegate: AppDelegate) {
         self.sessionManager = sessionManager
         self.modelManager = modelManager
@@ -20,8 +26,17 @@ class StatusBarController: NSObject {
         super.init()
 
         if let button = statusItem.button {
-            button.image = Self.loadStatusBarIcon()
+            button.image = Self.statusBarIcon(badged: false)
         }
+
+        UpdaterService.shared.$pendingUpdateVersion
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] version in
+                guard let self = self, self.pendingUpdateVersion != version else { return }
+                self.pendingUpdateVersion = version
+                self.updateState(self.lastState)
+            }
+            .store(in: &cancellables)
 
         buildMenu()
 
@@ -58,24 +73,64 @@ class StatusBarController: NSObject {
         return NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Corvin")
     }
 
+    /// The status bar icon, optionally carrying an update badge in its top-right
+    /// corner.
+    ///
+    /// The badge is baked into the same template image as the glyph, so it takes
+    /// the menubar's foreground colour — white on a dark menubar, black on a
+    /// light one. A transparent ring is punched around it first so it stays
+    /// legible where it overlaps the glyph.
+    private static func statusBarIcon(badged: Bool) -> NSImage? {
+        guard let base = loadStatusBarIcon() else { return nil }
+        guard badged else { return base }
+
+        let size = base.size
+        guard size.width > 0, size.height > 0 else { return base }
+
+        // Drawn through a handler rather than lockFocus so AppKit can re-render
+        // it at whatever backing scale the current screen needs.
+        let badgedIcon = NSImage(size: size, flipped: false) { rect in
+            base.draw(in: rect)
+
+            let diameter = max(4, rect.width * 0.34)
+            let dot = NSRect(
+                x: rect.maxX - diameter,
+                y: rect.maxY - diameter,
+                width: diameter,
+                height: diameter
+            )
+
+            NSGraphicsContext.current?.compositingOperation = .destinationOut
+            NSBezierPath(ovalIn: dot.insetBy(dx: -1.5, dy: -1.5)).fill()
+
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            // Colour is irrelevant in a template image — only alpha survives.
+            NSColor.black.setFill()
+            NSBezierPath(ovalIn: dot).fill()
+
+            return true
+        }
+        badgedIcon.isTemplate = true
+        return badgedIcon
+    }
+
     func updateState(_ state: SessionState) {
+        lastState = state
+
         guard let button = statusItem.button else { return }
+
+        button.image = Self.statusBarIcon(badged: pendingUpdateVersion != nil)
 
         switch state {
         case .idle:
-            button.image = Self.loadStatusBarIcon()
             button.contentTintColor = nil
         case .recording:
-            button.image = Self.loadStatusBarIcon()
             button.contentTintColor = .systemRed
         case .transcribing:
-            button.image = Self.loadStatusBarIcon()
             button.contentTintColor = .systemOrange
         case .inserting, .done:
-            button.image = Self.loadStatusBarIcon()
             button.contentTintColor = .systemGreen
         case .error:
-            button.image = Self.loadStatusBarIcon()
             button.contentTintColor = .systemYellow
         }
 
@@ -98,6 +153,16 @@ class StatusBarController: NSObject {
         let statusItem = NSMenuItem(title: "● Corvin — \(statusText)", action: nil, keyEquivalent: "")
         statusItem.isEnabled = false
         menu.addItem(statusItem)
+        menu.addItem(NSMenuItem.separator())
+
+        // File transcription
+        let transcribeFile = NSMenuItem(
+            title: "Распознать файл...",
+            action: #selector(showSettingsTranscription),
+            keyEquivalent: ""
+        )
+        transcribeFile.target = self
+        menu.addItem(transcribeFile)
         menu.addItem(NSMenuItem.separator())
 
         // Recent records
@@ -141,7 +206,14 @@ class StatusBarController: NSObject {
         settings.target = self
         menu.addItem(settings)
 
-        let updates = NSMenuItem(title: "Проверить обновления...", action: #selector(UpdaterService.checkForUpdates(_:)), keyEquivalent: "")
+        // One action, two faces: plain "check" when up to date, a call to action
+        // naming the version once the silent probe has found one.
+        let updatesTitle = pendingUpdateVersion.map { "Обновить до \($0)" } ?? "Проверить обновления..."
+        let updates = NSMenuItem(
+            title: updatesTitle,
+            action: #selector(UpdaterService.checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
         updates.target = UpdaterService.shared
         menu.addItem(updates)
 
@@ -173,6 +245,10 @@ class StatusBarController: NSObject {
 
     @objc private func showSettingsModels() {
         appDelegate?.showSettingsWindow(tab: .models)
+    }
+
+    @objc private func showSettingsTranscription() {
+        appDelegate?.showSettingsWindow(tab: .transcription)
     }
 
     @objc private func showAbout() {

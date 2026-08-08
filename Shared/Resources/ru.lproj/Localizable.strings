@@ -16,11 +16,12 @@
 // MARK: - Settings Tabs (macOS)
 "settings.tab.general" = "Основные";
 "settings.tab.models" = "Модели";
+"settings.tab.layout" = "Раскладка";
 "settings.tab.indicator" = "Индикатор";
 "settings.tab.history" = "История";
 "settings.tab.permissions" = "Разрешения";
 "settings.tab.language" = "Язык";
-"settings.tab.test" = "Тест";
+"settings.tab.transcription" = "Транскрибация";
 
 // MARK: - Test Transcription
 "test.recording.title" = "Тест записи";
@@ -40,6 +41,14 @@
 "settings.general.pressKey" = "Нажмите клавишу…";
 "settings.general.autoInsert" = "Автовставка текста в активное поле";
 "settings.general.copyToClipboard" = "Копировать в буфер обмена";
+
+// MARK: - Layout Switching Settings
+"settings.layout.enabled" = "Исправлять раскладку по тапу Option";
+"settings.layout.hint" = "Одиночное нажатие Option перенабирает выделенный текст в другой раскладке: «вщп» → «dog». Если ничего не выделено, исправляется слово перед курсором. Повторный тап возвращает как было. Как модификатор Option продолжает работать обычным образом.";
+"settings.layout.optionConflict" = "Option назначен клавишей записи, поэтому переключение раскладки отключено. Выберите другую клавишу записи на вкладке «Основные».";
+"settings.layout.changeInputSource" = "Переключать системную раскладку после исправления";
+"settings.layout.changeInputSource.hint" = "Чтобы продолжать печатать на нужном языке. Обе раскладки должны быть добавлены в Системных настройках › Клавиатура.";
+"settings.layout.compatibility" = "Лучше всего работает в нативных приложениях. В Chrome, VS Code и других Electron-приложениях первая попытка может пройти через копирование-вставку, что кратковременно задействует буфер обмена. Поля паролей не затрагиваются.";
 
 // MARK: - Indicator Settings
 "settings.indicator.show" = "Показывать индикатор";

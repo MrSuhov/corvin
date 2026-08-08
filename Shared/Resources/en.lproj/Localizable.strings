@@ -16,11 +16,12 @@
 // MARK: - Settings Tabs (macOS)
 "settings.tab.general" = "General";
 "settings.tab.models" = "Models";
+"settings.tab.layout" = "Layout";
 "settings.tab.indicator" = "Indicator";
 "settings.tab.history" = "History";
 "settings.tab.permissions" = "Permissions";
 "settings.tab.language" = "Language";
-"settings.tab.test" = "Test";
+"settings.tab.transcription" = "Transcription";
 
 // MARK: - Test Transcription
 "test.recording.title" = "Test Recording";
@@ -40,6 +41,14 @@
 "settings.general.pressKey" = "Press a key…";
 "settings.general.autoInsert" = "Auto-insert text into active field";
 "settings.general.copyToClipboard" = "Copy to clipboard";
+
+// MARK: - Layout Switching Settings
+"settings.layout.enabled" = "Fix keyboard layout with an Option tap";
+"settings.layout.hint" = "Tap Option on its own to re-type the selected text in the other layout — “вщп” becomes “dog”. With nothing selected, the word before the cursor is converted. Tap again to undo. Option keeps working normally as a modifier.";
+"settings.layout.optionConflict" = "Option is currently the recording key, so layout switching is disabled. Pick another recording key on the General tab.";
+"settings.layout.changeInputSource" = "Switch system input source after converting";
+"settings.layout.changeInputSource.hint" = "Keeps typing in the language you meant. Requires both layouts to be enabled in System Settings › Keyboard.";
+"settings.layout.compatibility" = "Works best in native apps. In Chrome, VS Code and other Electron apps the first attempt may fall back to copy/paste, which briefly uses the clipboard. Password fields are never touched.";
 
 // MARK: - Indicator Settings
 "settings.indicator.show" = "Show indicator";

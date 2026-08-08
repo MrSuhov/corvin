@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeyService: HotkeyService!
     private var audioCaptureService: AudioCaptureService!
     private var accessibilityService: AccessibilityService!
+    private var layoutSwitchService: LayoutSwitchService!
     private(set) var transcriptionEngine: TranscriptionEngine!
 
     private var statusBarController: StatusBarController!
@@ -43,9 +44,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "indicatorPosition": "bottomCenter",
             "indicatorSize": "normal",
             "autoCleanupPeriod": "never",
+            // Layout switching is opt-in: enabling it makes a bare Option tap
+            // rewrite text, which is too surprising to turn on for everyone.
+            "layoutSwitchEnabled": false,
+            "layoutSwitchChangesInputSource": true,
         ])
 
         accessibilityService = AccessibilityService()
+        layoutSwitchService = LayoutSwitchService(accessibility: accessibilityService)
         audioCaptureService = AudioCaptureService()
         transcriptionEngine = TranscriptionEngine(modelManager: modelManager)
         hotkeyService = HotkeyService()
@@ -110,12 +116,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.stopRecordingAndTranscribe()
         }
 
+        hotkeyService.onLayoutSwitchTap = { [weak self] in
+            self?.layoutSwitchService.convertTextAtCursor()
+        }
+
         sessionManager.$state
             .sink { [weak self] state in
                 self?.statusBarController.updateState(state)
                 self?.floatingIndicator.updateState(state)
             }
             .store(in: &cancellables)
+
+        // Toggling layout switching changes which event types the tap must
+        // observe, so the tap is rebuilt when the setting changes.
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: UserDefaults.standard,
+            queue: .main
+        ) { [weak self] _ in
+            self?.hotkeyService.refreshEventMask()
+        }
     }
 
     private func startRecording() {
@@ -232,7 +252,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
         flog("application(open:) \(url.lastPathComponent)")
-        showSettingsWindow(tab: .test)
+        showSettingsWindow(tab: .transcription)
         NotificationCenter.default.post(
             name: .transcribeFileRequest,
             object: nil,

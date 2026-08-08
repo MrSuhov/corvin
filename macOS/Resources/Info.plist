@@ -48,9 +48,15 @@
          value printed by `generate_keys` (the private key stays in your Keychain). -->
     <key>SUPublicEDKey</key>
     <string>xJ1e4C9Vjeur90jhhWpM4o8ZoJxITrfvAkqf6gVWd8Y=</string>
+    <!-- Sparkle's own scheduler is off: on a found update it opens its window
+         unprompted, which is wrong for a menubar agent. UpdaterService polls the
+         appcast silently instead and surfaces the result as a dot on the status
+         bar icon. UpdaterService also sets this through the updater at launch,
+         because a previously persisted UserDefaults value would outrank the
+         plist for anyone upgrading. -->
     <key>SUEnableAutomaticChecks</key>
-    <true/>
-    <!-- Check once per day (seconds). -->
+    <false/>
+    <!-- Poll interval for the silent check (seconds). -->
     <key>SUScheduledCheckInterval</key>
     <integer>86400</integer>
     <key>CFBundleDocumentTypes</key>

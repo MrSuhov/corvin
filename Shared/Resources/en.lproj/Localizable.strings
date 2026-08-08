@@ -43,9 +43,11 @@
 "settings.general.copyToClipboard" = "Copy to clipboard";
 
 // MARK: - Layout Switching Settings
-"settings.layout.enabled" = "Fix keyboard layout with an Option tap";
-"settings.layout.hint" = "Tap Option on its own to re-type the selected text in the other layout — “вщп” becomes “dog”. With nothing selected, the word before the cursor is converted. Tap again to undo. Option keeps working normally as a modifier.";
-"settings.layout.optionConflict" = "Option is currently the recording key, so layout switching is disabled. Pick another recording key on the General tab.";
+"settings.layout.enabled" = "Fix keyboard layout with a %1$@ tap";
+"settings.layout.hint" = "Tap %1$@ on its own to re-type the selected text in the other layout — “вщп” becomes “dog”. With nothing selected, the word before the cursor is converted. Tap again to undo. %1$@ keeps working normally as a modifier.";
+"settings.layout.key" = "Switch key:";
+"settings.layout.key.modifiersOnly" = "Pick a modifier: ⌥, ⌘, ⌃, ⇧ or fn. An ordinary key would type itself before the tap could be recognised.";
+"settings.layout.optionConflict" = "This key is also the recording key, so layout switching is disabled. Change one of them.";
 "settings.layout.changeInputSource" = "Switch system input source after converting";
 "settings.layout.changeInputSource.hint" = "Keeps typing in the language you meant. Requires both layouts to be enabled in System Settings › Keyboard.";
 "settings.layout.compatibility" = "Works best in native apps. In Chrome, VS Code and other Electron apps the first attempt may fall back to copy/paste, which briefly uses the clipboard. Password fields are never touched.";

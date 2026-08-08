@@ -206,14 +206,24 @@ class StatusBarController: NSObject {
         settings.target = self
         menu.addItem(settings)
 
-        // One action, two faces: plain "check" when up to date, a call to action
-        // naming the version once the silent probe has found one.
-        let updatesTitle = pendingUpdateVersion.map { "Обновить до \($0)" } ?? "Проверить обновления..."
-        let updates = NSMenuItem(
-            title: updatesTitle,
-            action: #selector(UpdaterService.checkForUpdates(_:)),
-            keyEquivalent: ""
-        )
+        // Two different actions behind one slot. With nothing found, the item
+        // kicks off a silent probe — no window, no app activation, the answer
+        // arrives as the dot on the icon. Once a version is known, the same slot
+        // becomes the install action, which is where Sparkle's UI belongs.
+        let updates: NSMenuItem
+        if let version = pendingUpdateVersion {
+            updates = NSMenuItem(
+                title: "Обновить до \(version)",
+                action: #selector(UpdaterService.installUpdate(_:)),
+                keyEquivalent: ""
+            )
+        } else {
+            updates = NSMenuItem(
+                title: "Проверить обновления...",
+                action: #selector(UpdaterService.checkForUpdatesInBackground(_:)),
+                keyEquivalent: ""
+            )
+        }
         updates.target = UpdaterService.shared
         menu.addItem(updates)
 

@@ -8,62 +8,59 @@ class HotkeyService {
     var onKeyDown: (() -> Void)?
     var onKeyUp: (() -> Void)?
 
-    /// Fired on a "clean tap" of the Option key: pressed and released on its own,
-    /// quickly, with nothing else touched in between. See `handleOptionTap`.
+    /// Fired on a "clean tap" of the layout-switch key: pressed and released on
+    /// its own, quickly, with nothing else touched in between. See `handleTap`.
     var onLayoutSwitchTap: (() -> Void)?
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var isFnPressed = false
+    private var isRecordKeyPressed = false
 
     // Default to fn key; configurable via UserDefaults
     private var hotkeyKeyCode: Int {
         let saved = UserDefaults.standard.integer(forKey: "hotkeyKeyCode")
-        return saved != 0 ? saved : 63 // 63 = fn key
+        return saved != 0 ? saved : ModifierKey.function.canonicalKeyCode
     }
 
-    // MARK: - Option-tap state
+    private var recordKey: ModifierKey? {
+        ModifierKey.from(keyCode: hotkeyKeyCode)
+    }
 
-    private static let leftOptionKeyCode: Int64 = 58
-    private static let rightOptionKeyCode: Int64 = 61
+    // MARK: - Layout-switch tap state
 
-    /// A tap must complete within this window. Anything slower is Option being
-    /// held as a modifier (dead keys, Option+click, Option+scroll), not a tap.
-    private static let optionTapMaxDuration: CFTimeInterval = 0.35
+    /// A tap must complete within this window. Anything slower is the modifier
+    /// being held for its normal job (dead keys, ⌥-click, ⌥-scroll), not a tap.
+    private static let tapMaxDuration: CFTimeInterval = 0.35
 
-    /// Holding any of these alongside Option means the user is composing a
-    /// shortcut, not tapping. Caps Lock and the numeric-pad flag are excluded on
-    /// purpose: they can be latched on permanently and say nothing about intent.
-    private static let conflictingModifiers: CGEventFlags =
-        [.maskCommand, .maskShift, .maskControl, .maskSecondaryFn]
-
-    private var isOptionPressed = false
-    /// True while the current Option press is still a tap candidate. Any other
-    /// key, modifier, click or scroll clears it.
-    private var optionTapIsClean = false
-    private var optionPressedAt: CFTimeInterval = 0
+    private var isTapKeyPressed = false
+    /// True while the current press is still a tap candidate. Any other key,
+    /// modifier, click or scroll clears it.
+    private var tapIsClean = false
+    private var tapPressedAt: CFTimeInterval = 0
 
     private var layoutSwitchEnabled: Bool {
         UserDefaults.standard.bool(forKey: "layoutSwitchEnabled")
     }
 
-    /// The Option tap is unavailable when Option is also the push-to-talk key —
-    /// one physical key cannot mean both "record" and "switch layout".
-    private var optionTapAvailable: Bool {
-        hotkeyKeyCode != Int(Self.leftOptionKeyCode) && hotkeyKeyCode != Int(Self.rightOptionKeyCode)
+    private var layoutSwitchKey: ModifierKey? {
+        let saved = UserDefaults.standard.integer(forKey: "layoutSwitchKeyCode")
+        return ModifierKey.from(keyCode: saved != 0 ? saved : ModifierKey.option.canonicalKeyCode)
     }
 
     private var retryTimer: Timer?
 
-    private var optionTapDetectorActive: Bool {
-        layoutSwitchEnabled && optionTapAvailable
+    /// The tap detector is off when the same modifier is also push-to-talk: one
+    /// physical key cannot mean both "record" and "switch layout".
+    private var activeTapKey: ModifierKey? {
+        guard layoutSwitchEnabled, let key = layoutSwitchKey, key != recordKey else { return nil }
+        return key
     }
 
     /// Whether the live tap was created with pointer events in its mask.
     private var observesPointerEvents = false
 
     /// Pointer and scroll events are watched only to invalidate an in-flight
-    /// Option tap (Option+click, Option+scroll-to-zoom). They're excluded when
+    /// tap (⌥-click, ⌥-scroll-to-zoom). They're excluded when
     /// layout switching is off so a head-inserted tap isn't sitting in the path
     /// of every scroll event for users who never enabled the feature.
     private func observedTypes() -> [CGEventType] {
@@ -74,7 +71,7 @@ class HotkeyService {
             .tapDisabledByTimeout,
             .tapDisabledByUserInput,
         ]
-        if optionTapDetectorActive {
+        if activeTapKey != nil {
             types += [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
         }
         return types
@@ -85,8 +82,8 @@ class HotkeyService {
     /// call from a broad UserDefaults change notification. Main thread only —
     /// `start`/`stop` touch the current run loop.
     func refreshEventMask() {
-        guard eventTap != nil, observesPointerEvents != optionTapDetectorActive else { return }
-        flog("HotkeyService.refreshEventMask: rebuilding tap, pointerEvents=\(optionTapDetectorActive)")
+        guard eventTap != nil, observesPointerEvents != (activeTapKey != nil) else { return }
+        flog("HotkeyService.refreshEventMask: rebuilding tap, pointerEvents=\(activeTapKey != nil)")
         stop()
         start()
     }
@@ -100,7 +97,7 @@ class HotkeyService {
 
         // Built with reduce rather than a chain of `|`: as a single expression
         // the type checker gives up on it.
-        observesPointerEvents = optionTapDetectorActive
+        observesPointerEvents = activeTapKey != nil
         let eventMask: CGEventMask = observedTypes().reduce(into: CGEventMask(0)) { mask, type in
             mask |= CGEventMask(1) << CGEventMask(type.rawValue)
         }
@@ -171,73 +168,75 @@ class HotkeyService {
             return Unmanaged.passRetained(event)
         }
 
-        if type == .flagsChanged {
-            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            if keyCode == hotkeyKeyCode {
-                let flags = event.flags
-                let fnPressed = flags.contains(.maskSecondaryFn)
+        if type == .flagsChanged, let recordKey = recordKey {
+            let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+            // Match on the modifier rather than the exact code so the right-hand
+            // key works too. The flag is derived from the configured key: this
+            // used to be hardcoded to fn, so any other push-to-talk key was
+            // silently dead.
+            if recordKey.keyCodes.contains(keyCode) {
+                let isDown = event.flags.contains(recordKey.flag)
 
-                if fnPressed && !isFnPressed {
-                    isFnPressed = true
+                if isDown && !isRecordKeyPressed {
+                    isRecordKeyPressed = true
                     flog("HotkeyService: key DOWN (keyCode=\(keyCode))")
                     DispatchQueue.main.async { self.onKeyDown?() }
-                } else if !fnPressed && isFnPressed {
-                    isFnPressed = false
+                } else if !isDown && isRecordKeyPressed {
+                    isRecordKeyPressed = false
                     flog("HotkeyService: key UP (keyCode=\(keyCode))")
                     DispatchQueue.main.async { self.onKeyUp?() }
                 }
             }
         }
 
-        handleOptionTap(type: type, event: event)
+        handleTap(type: type, event: event)
 
         return Unmanaged.passRetained(event)
     }
 
-    /// Recognises a standalone tap of the Option key.
+    /// Recognises a standalone tap of the configured modifier.
     ///
-    /// The event is never consumed — Option keeps working as a modifier, because
-    /// the decision is made on *release* and only when nothing else happened
-    /// while the key was down.
-    private func handleOptionTap(type: CGEventType, event: CGEvent) {
-        guard layoutSwitchEnabled, optionTapAvailable else {
-            // Don't leave stale state behind if the feature is toggled off mid-press.
-            isOptionPressed = false
-            optionTapIsClean = false
+    /// The event is never consumed — the key keeps working as a modifier,
+    /// because the decision is made on *release* and only when nothing else
+    /// happened while it was down.
+    private func handleTap(type: CGEventType, event: CGEvent) {
+        guard let tapKey = activeTapKey else {
+            // Don't leave stale state behind if the setting changed mid-press.
+            isTapKeyPressed = false
+            tapIsClean = false
             return
         }
 
         switch type {
         case .flagsChanged:
-            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            let isOptionKey = keyCode == Self.leftOptionKeyCode || keyCode == Self.rightOptionKeyCode
-            let optionDown = event.flags.contains(.maskAlternate)
+            let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+            let isDown = event.flags.contains(tapKey.flag)
 
-            guard isOptionKey else {
-                // Some other modifier changed. If that happened while Option was
-                // held, the user is building a chord, not tapping.
-                if isOptionPressed { optionTapIsClean = false }
+            guard tapKey.keyCodes.contains(keyCode) else {
+                // Some other modifier changed. If that happened while our key
+                // was held, the user is building a chord, not tapping.
+                if isTapKeyPressed { tapIsClean = false }
                 return
             }
 
-            if optionDown && !isOptionPressed {
-                isOptionPressed = true
-                optionTapIsClean = event.flags.isDisjoint(with: Self.conflictingModifiers)
-                optionPressedAt = CACurrentMediaTime()
-            } else if !optionDown && isOptionPressed {
-                isOptionPressed = false
-                let elapsed = CACurrentMediaTime() - optionPressedAt
-                let wasClean = optionTapIsClean
-                optionTapIsClean = false
+            if isDown && !isTapKeyPressed {
+                isTapKeyPressed = true
+                tapIsClean = event.flags.isDisjoint(with: tapKey.competingFlags)
+                tapPressedAt = CACurrentMediaTime()
+            } else if !isDown && isTapKeyPressed {
+                isTapKeyPressed = false
+                let elapsed = CACurrentMediaTime() - tapPressedAt
+                let wasClean = tapIsClean
+                tapIsClean = false
 
-                if wasClean && elapsed <= Self.optionTapMaxDuration {
-                    flog("HotkeyService: Option TAP (\(Int(elapsed * 1000))ms)")
+                if wasClean && elapsed <= Self.tapMaxDuration {
+                    flog("HotkeyService: \(tapKey.symbol) TAP (\(Int(elapsed * 1000))ms)")
                     DispatchQueue.main.async { self.onLayoutSwitchTap?() }
                 }
             }
 
         case .keyDown, .keyUp, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel:
-            if isOptionPressed { optionTapIsClean = false }
+            if isTapKeyPressed { tapIsClean = false }
 
         default:
             break

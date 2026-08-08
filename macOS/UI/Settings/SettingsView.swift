@@ -218,26 +218,7 @@ struct GeneralSettingsView: View {
     }
 
     private var hotkeyDisplayName: String {
-        keyCodeToString(hotkeyKeyCode)
-    }
-
-    private func keyCodeToString(_ keyCode: Int) -> String {
-        let knownKeys: [Int: String] = [
-            63: "fn",
-            49: "Space",
-            36: "Return",
-            48: "Tab",
-            51: "Delete",
-            53: "Escape",
-            55: "⌘",
-            56: "⇧",
-            58: "⌥",
-            59: "⌃",
-            122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5",
-            97: "F6", 98: "F7", 100: "F8", 101: "F9", 109: "F10",
-            103: "F11", 111: "F12",
-        ]
-        return knownKeys[keyCode] ?? "Key \(keyCode)"
+        ModifierKey.displayName(forKeyCode: hotkeyKeyCode)
     }
 }
 
@@ -306,27 +287,76 @@ struct ModelSettingsView: View {
 // MARK: - Layout switching
 
 struct LayoutSwitchSettingsView: View {
-    @AppStorage("layoutSwitchEnabled") private var layoutSwitchEnabled = false
+    @AppStorage("layoutSwitchEnabled") private var layoutSwitchEnabled = true
     @AppStorage("layoutSwitchChangesInputSource") private var changesInputSource = true
-    @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 63
+    @AppStorage("layoutSwitchKeyCode") private var layoutSwitchKeyCode = ModifierKey.option.canonicalKeyCode
+    @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = ModifierKey.function.canonicalKeyCode
+    @State private var isRecordingHotkey = false
+    @State private var rejectedNonModifier = false
 
-    /// 58 / 61 are the left and right Option keys. If push-to-talk is bound to
-    /// one of them the tap detector stays off — the same key cannot mean both
-    /// "record" and "switch layout".
-    private var optionTakenByRecording: Bool {
-        hotkeyKeyCode == 58 || hotkeyKeyCode == 61
+    private var keyName: String {
+        ModifierKey.displayName(forKeyCode: layoutSwitchKeyCode)
+    }
+
+    /// The same physical key cannot mean both "record" and "switch layout".
+    private var conflictsWithRecording: Bool {
+        guard let switchKey = ModifierKey.from(keyCode: layoutSwitchKeyCode) else { return false }
+        return switchKey == ModifierKey.from(keyCode: hotkeyKeyCode)
     }
 
     var body: some View {
         Form {
-            Toggle("settings.layout.enabled".localized, isOn: $layoutSwitchEnabled)
+            Toggle("settings.layout.enabled".localized(with: keyName), isOn: $layoutSwitchEnabled)
 
-            Text("settings.layout.hint".localized)
+            Text("settings.layout.hint".localized(with: keyName))
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if optionTakenByRecording {
+            HStack {
+                Text("settings.layout.key".localized)
+                Spacer()
+                Button(action: { isRecordingHotkey = true }) {
+                    Text(isRecordingHotkey
+                         ? "settings.general.pressKey".localized
+                         : ModifierKey.displayName(forKeyCode: layoutSwitchKeyCode))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(isRecordingHotkey ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.2))
+                        .cornerRadius(4)
+                }
+                .modifier(BorderedButtonCompat())
+                .modifier(OnKeyPressCompat(isRecording: $isRecordingHotkey))
+                .focusable(isRecordingHotkey)
+                .disabled(!layoutSwitchEnabled)
+                .overlay(
+                    Group {
+                        if isRecordingHotkey {
+                            HotkeyRecorderView { keyCode in
+                                // Only modifiers can be tapped: a letter would
+                                // type itself before we ever saw the release.
+                                if let modifier = ModifierKey.from(keyCode: keyCode) {
+                                    layoutSwitchKeyCode = modifier.canonicalKeyCode
+                                    rejectedNonModifier = false
+                                    isRecordingHotkey = false
+                                } else {
+                                    rejectedNonModifier = true
+                                }
+                            }
+                            .frame(width: 0, height: 0)
+                        }
+                    }
+                )
+            }
+
+            if rejectedNonModifier {
+                Text("settings.layout.key.modifiersOnly".localized)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if conflictsWithRecording {
                 Label("settings.layout.optionConflict".localized, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundColor(.orange)

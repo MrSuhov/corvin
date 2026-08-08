@@ -44,10 +44,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "indicatorPosition": "bottomCenter",
             "indicatorSize": "normal",
             "autoCleanupPeriod": "never",
-            // Layout switching is opt-in: enabling it makes a bare Option tap
-            // rewrite text, which is too surprising to turn on for everyone.
-            "layoutSwitchEnabled": false,
+            "layoutSwitchEnabled": true,
             "layoutSwitchChangesInputSource": true,
+            "layoutSwitchKeyCode": ModifierKey.option.canonicalKeyCode,
         ])
 
         accessibilityService = AccessibilityService()

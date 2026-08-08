@@ -100,17 +100,28 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     // MARK: - Menu actions
 
-    /// Wired to both "Проверить обновления…" and "Обновить": in either case
-    /// Sparkle re-fetches the appcast and presents its standard window, from
-    /// which the user confirms the download and install.
-    @objc func checkForUpdates(_ sender: Any?) {
+    /// Wired to "Проверить обновления…".
+    ///
+    /// Deliberately silent: no window, no app activation, not even a "you're up
+    /// to date" alert. The result shows up as the dot on the status bar icon,
+    /// and the menu item itself turns into "Обновить" when something is found.
+    @objc func checkForUpdatesInBackground(_ sender: Any?) {
+        probeForUpdate()
+    }
+
+    /// Wired to "Обновить до …", shown only once a probe has found a version.
+    /// This is the one place Sparkle's own UI is wanted: it presents the release
+    /// notes and the Install button, then downloads, installs and relaunches.
+    @objc func installUpdate(_ sender: Any?) {
+        flog("updater: user asked to install \(pendingUpdateVersion ?? "?")")
         controller.checkForUpdates(sender)
     }
 
     /// Disables the menu item while an update check can't be started (e.g. one is
     /// already in progress).
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(checkForUpdates(_:)) {
+        if item.action == #selector(checkForUpdatesInBackground(_:))
+            || item.action == #selector(installUpdate(_:)) {
             return controller.updater.canCheckForUpdates
         }
         return true

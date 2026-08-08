@@ -6,42 +6,41 @@ import Carbon
 /// "Punto Switcher" behaviour: re-type the selected text — or, with nothing
 /// selected, the word behind the caret — in the other keyboard layout.
 ///
-/// Two paths, tried in order:
+/// Every step that changes the document goes through synthetic keystrokes and
+/// the pasteboard, never through the Accessibility API. AX *writes* cannot be
+/// trusted: in Electron apps `AXUIElementSetAttributeValue` returns `.success`
+/// while the edit never reaches the document, and the AX state left behind is
+/// indistinguishable from a successful edit — so the failure can't be caught
+/// after the fact either. ⌘C / ⌘V behave the same everywhere, and are what the
+/// dictation path already relies on.
 ///
-/// 1. **Accessibility.** Read and write the text directly on the focused
-///    element. Nothing is synthesised, the pasteboard is untouched, and it is
-///    instant. Works in native Cocoa fields, Safari, Xcode, Notes.
-/// 2. **Clipboard.** Synthetic ⌘C / ⌘V with the user's pasteboard snapshotted
-///    and restored. Slower and lossier, but it is the only thing that reaches
-///    Electron apps and some web views.
+/// AX is still used, read-only, for the one thing the pasteboard can't answer
+/// cleanly: whether a selection exists right now. Editors copy the whole
+/// current line when ⌘C runs with an empty selection, so without that hint a
+/// caret resting in a line looks exactly like a selected line.
 ///
-/// The AX path is never trusted on its word: `AXUIElementSetAttributeValue` can
-/// return `.success` and still change nothing. Electron apps expose a hidden
-/// textarea for screen readers that reads back correctly and accepts writes, but
-/// never feeds them into the document model — so a write is confirmed by reading
-/// the element again, and an app that fails the check is remembered and served
-/// by the clipboard path from then on.
+/// The flow is uniform:
+///   1. make sure the target text is really selected (it already is, or
+///      Shift+Option+← selects the previous word),
+///   2. ⌘C to read exactly what the app has selected — the authoritative value,
+///   3. convert, put it on the pasteboard, ⌘V, restore the pasteboard.
 final class LayoutSwitchService {
 
     private let accessibility: AccessibilityService
 
-    /// Serialises conversions. Both paths involve async waits, and a second tap
-    /// arriving mid-flight would race on the pasteboard snapshot.
+    /// Serialises conversions. The flow involves several async waits, and a
+    /// second tap arriving mid-flight would race on the pasteboard snapshot.
     private var isConverting = false
 
-    /// Bundle IDs observed to accept an AX text write and then discard it.
-    /// Learned at runtime rather than hardcoded, and deliberately not persisted:
-    /// a restart re-tests the app, so a bad reading never becomes permanent.
-    private var appsDiscardingAXWrites = Set<String>()
+    /// Extra pause after Option is seen released, giving the frontmost app time
+    /// to process the key-up before it receives a synthetic ⌘C.
+    private static let modifierSettleDelay: TimeInterval = 0.05
 
-    /// How far back the "last word" scan may run. Also bounds the AX text read.
-    private static let maxWordLength = 128
+    /// Pause after a selection-changing keystroke before acting on the result.
+    private static let selectionSettleDelay: TimeInterval = 0.05
 
-    /// Grace period before a write that looks ignored is declared ignored. A
-    /// renderer that applies the change asynchronously would otherwise be
-    /// misdiagnosed — and running the clipboard path on top of a write that did
-    /// land would convert the text a second time, silently undoing it.
-    private static let writeVerifyDelay: TimeInterval = 0.05
+    /// Pause after ⌘V before the pasteboard is rewound to the user's content.
+    private static let pasteSettleDelay: TimeInterval = 0.25
 
     private enum VirtualKey {
         static let c: CGKeyCode = 0x08
@@ -78,201 +77,131 @@ final class LayoutSwitchService {
         }
 
         isConverting = true
+        flog("layoutSwitch: begin, app=\(accessibility.frontmostBundleIdentifier ?? "unknown")")
 
-        let bundleID = accessibility.frontmostBundleIdentifier
-        flog("layoutSwitch: begin, app=\(bundleID ?? "unknown")")
-
-        let finish: () -> Void = { [weak self] in self?.isConverting = false }
-
-        if let bundleID = bundleID, appsDiscardingAXWrites.contains(bundleID) {
-            flog("layoutSwitch: \(bundleID) is known to discard AX writes, using clipboard directly")
-            convertViaClipboard(then: finish)
-            return
+        let snapshot = accessibility.snapshotPasteboard()
+        let finish: () -> Void = { [weak self] in
+            self?.accessibility.restorePasteboard(snapshot)
+            self?.isConverting = false
         }
 
+        afterOptionReleased { [weak self] in
+            guard let self = self else { return finish() }
+            self.selectTarget { ready in
+                guard ready else { return finish() }
+                self.convertSelection(then: finish)
+            }
+        }
+    }
+
+    // MARK: - Step 1: get the target text selected
+
+    private enum SelectionState {
+        case hasSelection
+        case caretOnly
+        case unknown
+    }
+
+    /// Leaves the app with the text to convert selected, so the ⌘V that follows
+    /// replaces it instead of inserting beside it.
+    private func selectTarget(completion: @escaping (Bool) -> Void) {
+        switch selectionStateFromAccessibility() {
+        case .hasSelection:
+            flog("layoutSwitch: AX reports an existing selection")
+            completion(true)
+
+        case .caretOnly:
+            flog("layoutSwitch: AX reports a caret with no selection, taking the previous word")
+            selectPreviousWord(then: completion)
+
+        case .unknown:
+            // No usable AX. Probe with ⌘C: if the pasteboard doesn't move there
+            // was nothing selected. A result containing a newline is the
+            // copy-the-current-line behaviour editors fall back to, which also
+            // means there was no selection.
+            flog("layoutSwitch: AX unavailable, probing with ⌘C")
+            copySelection(label: "probe") { [weak self] text in
+                guard let self = self else { return completion(false) }
+                if let text = text, !text.contains(where: \.isNewline) {
+                    completion(true)
+                    return
+                }
+                if text != nil {
+                    flog("layoutSwitch: probe returned a whole line, treating as no selection")
+                }
+                self.selectPreviousWord(then: completion)
+            }
+        }
+    }
+
+    private func selectionStateFromAccessibility() -> SelectionState {
         accessibility.enableManualAccessibility()
 
-        attemptAccessibilityPath(bundleID: bundleID) { [weak self] handled in
-            guard let self = self else { return finish() }
-            if handled {
-                finish()
-            } else {
-                flog("layoutSwitch: AX path unavailable, falling back to clipboard")
-                self.convertViaClipboard(then: finish)
-            }
-        }
-    }
-
-    // MARK: - Path 1: Accessibility
-
-    /// Calls back with true when the conversion was fully handled here.
-    private func attemptAccessibilityPath(bundleID: String?, completion: @escaping (Bool) -> Void) {
-        guard let element = accessibility.focusedElement() else {
-            flog("layoutSwitch: no focused element")
-            return completion(false)
-        }
-
+        guard let element = accessibility.focusedElement() else { return .unknown }
         let role = accessibility.role(of: element) ?? "unknown"
 
-        if let selection = accessibility.selectedText(of: element) {
-            guard let converted = convertOrNil(selection) else { return completion(true) }
-            guard accessibility.replaceSelectedText(converted, of: element) else { return completion(false) }
-
-            confirmWrite(of: selection, on: element, bundleID: bundleID, role: role) { landed in
-                if landed {
-                    flog("layoutSwitch: AX replaced selection (\(selection.count) chars, role=\(role))")
-                    self.applyInputSourceSwitch(for: selection)
-                }
-                completion(landed)
-            }
-            return
+        if accessibility.selectedText(of: element) != nil {
+            return .hasSelection
         }
 
-        guard let (chunk, chunkStart) = accessibility.textBeforeCaret(
-            of: element,
-            maxLength: Self.maxWordLength
-        ) else {
-            flog("layoutSwitch: element exposes no text before caret (role=\(role))")
-            return completion(false)
+        // Tell "a text element with a caret" apart from "not a text element at
+        // all" — only the former justifies grabbing the previous word.
+        guard accessibility.selectedRange(of: element) != nil else {
+            flog("layoutSwitch: focused element exposes no selection range (role=\(role))")
+            return .unknown
         }
 
-        guard let relativeRange = LayoutMapper.lastWordRange(
-            in: chunk,
-            caret: chunk.utf16.count,
-            maxWordLength: Self.maxWordLength
-        ) else {
-            flog("layoutSwitch: nothing to convert behind caret")
-            return completion(true)
-        }
-
-        guard let stringRange = Range(
-            NSRange(location: relativeRange.lowerBound, length: relativeRange.count),
-            in: chunk
-        ) else { return completion(false) }
-
-        let word = String(chunk[stringRange])
-        guard let converted = convertOrNil(word) else { return completion(true) }
-
-        let absolute = (chunkStart + relativeRange.lowerBound)..<(chunkStart + relativeRange.upperBound)
-        guard accessibility.setSelectedRange(absolute, of: element),
-              accessibility.replaceSelectedText(converted, of: element)
-        else {
-            return completion(false)
-        }
-
-        confirmWrite(of: word, on: element, bundleID: bundleID, role: role) { landed in
-            if landed {
-                flog("layoutSwitch: AX replaced last word '\(word)' -> '\(converted)' (role=\(role))")
-                self.applyInputSourceSwitch(for: word)
-            }
-            completion(landed)
-        }
+        return .caretOnly
     }
 
-    /// Decides whether an AX write actually reached the document.
-    ///
-    /// The tell is the element still reporting the original text as selected: a
-    /// real edit either collapses the selection or leaves the converted text in
-    /// it, and `convertOrNil` guarantees converted != original.
-    private func confirmWrite(
-        of original: String,
-        on element: AXUIElement,
-        bundleID: String?,
-        role: String,
-        completion: @escaping (Bool) -> Void
-    ) {
-        if accessibility.selectedText(of: element) != original {
-            return completion(true)
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.writeVerifyDelay) { [weak self] in
-            guard let self = self else { return completion(false) }
-
-            if self.accessibility.selectedText(of: element) != original {
-                return completion(true)
-            }
-
-            flog("layoutSwitch: AX write reported success but was discarded by \(bundleID ?? "unknown") (role=\(role))")
-            if let bundleID = bundleID {
-                self.appsDiscardingAXWrites.insert(bundleID)
-            }
-            completion(false)
-        }
-    }
-
-    // MARK: - Path 2: Clipboard
-
-    private func convertViaClipboard(then completion: @escaping () -> Void) {
-        let snapshot = accessibility.snapshotPasteboard()
-
-        let finish = { [weak self] in
-            self?.accessibility.restorePasteboard(snapshot)
-            completion()
-        }
-
-        // Try an existing selection first. If ⌘C leaves the pasteboard
-        // untouched there was nothing selected, so grab the previous word.
-        copySelection { [weak self] selected in
-            guard let self = self else { return finish() }
-
-            if let selected = selected, !selected.contains(where: \.isNewline) {
-                self.pasteConversion(of: selected, then: finish)
-                return
-            }
-
-            if selected != nil {
-                // Editors copy the whole current line when ⌘C runs with an empty
-                // selection. Converting that and pasting it back at a caret would
-                // duplicate a mangled line, so treat it as "no selection".
-                flog("layoutSwitch: ⌘C returned a full line, treating as no selection")
-            }
-
-            self.convertWordViaClipboard(then: finish)
-        }
-    }
-
-    private func convertWordViaClipboard(then completion: @escaping () -> Void) {
+    private func selectPreviousWord(then completion: @escaping (Bool) -> Void) {
         accessibility.postKeystroke(
             virtualKey: VirtualKey.leftArrow,
             flags: [.maskShift, .maskAlternate]
         )
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            guard let self = self else { return completion() }
-            self.copySelection { word in
-                guard let word = word, !word.contains(where: \.isNewline) else {
-                    flog("layoutSwitch: clipboard path found nothing to convert")
-                    return completion()
-                }
-                self.pasteConversion(of: word, then: completion)
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.selectionSettleDelay) {
+            completion(true)
         }
     }
 
-    private func pasteConversion(of original: String, then completion: @escaping () -> Void) {
-        guard let converted = convertOrNil(original) else { return completion() }
+    // MARK: - Steps 2 and 3: read, convert, paste
 
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(converted, forType: .string)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+    private func convertSelection(then completion: @escaping () -> Void) {
+        copySelection(label: "target") { [weak self] text in
             guard let self = self else { return completion() }
-            self.accessibility.postKeystroke(virtualKey: VirtualKey.v, flags: .maskCommand)
-            flog("layoutSwitch: clipboard replaced '\(original)' -> '\(converted)'")
 
-            // Give the target app time to consume the paste before the
-            // pasteboard is rewound to the user's own content.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                self.applyInputSourceSwitch(for: original)
-                completion()
+            guard let original = text else {
+                flog("layoutSwitch: nothing selected to convert")
+                return completion()
+            }
+
+            let converted = LayoutMapper.convert(original)
+            guard converted != original else {
+                // Digits, spaces, symbols shared by both layouts: replacing them
+                // would be a pointless edit that still dirties the undo stack.
+                flog("layoutSwitch: conversion is a no-op, skipping")
+                return completion()
+            }
+
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(converted, forType: .string)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.selectionSettleDelay) {
+                self.accessibility.postKeystroke(virtualKey: VirtualKey.v, flags: .maskCommand)
+                flog("layoutSwitch: replaced '\(original)' -> '\(converted)'")
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.pasteSettleDelay) {
+                    self.applyInputSourceSwitch(for: original)
+                    completion()
+                }
             }
         }
     }
 
     /// Sends ⌘C and waits for the pasteboard to actually change. Returns nil
-    /// when nothing was copied, which is how "no selection" is detected.
-    private func copySelection(completion: @escaping (String?) -> Void) {
+    /// when nothing was copied.
+    private func copySelection(label: String, completion: @escaping (String?) -> Void) {
         let pasteboard = NSPasteboard.general
         let changeCountBefore = pasteboard.changeCount
 
@@ -280,8 +209,10 @@ final class LayoutSwitchService {
 
         pollPasteboard(changeCountBefore: changeCountBefore, attemptsLeft: 20) { changed in
             guard changed, let text = pasteboard.string(forType: .string), !text.isEmpty else {
+                flog("layoutSwitch: ⌘C for \(label) produced no pasteboard change")
                 return completion(nil)
             }
+            flog("layoutSwitch: ⌘C for \(label) got \(text.count) chars")
             completion(text)
         }
     }
@@ -308,18 +239,26 @@ final class LayoutSwitchService {
         }
     }
 
-    // MARK: - Conversion
+    // MARK: - Modifier timing
 
-    /// Converts `text`, or returns nil when the conversion is a no-op — text made
-    /// entirely of digits, spaces or symbols shared by both layouts. Replacing it
-    /// would be a pointless edit that still dirties the undo stack.
-    private func convertOrNil(_ text: String) -> String? {
-        let converted = LayoutMapper.convert(text)
-        guard converted != text else {
-            flog("layoutSwitch: conversion is a no-op, skipping")
-            return nil
+    /// Runs `work` once the Option key the user just tapped is no longer part of
+    /// the modifier state.
+    ///
+    /// The hotkey fires on Option's key-up, and that event is still travelling
+    /// through the window server when the handler runs. A synthetic ⌘C posted
+    /// inside that window can reach the app as ⌥⌘C, which is not Copy — while
+    /// Shift+Option+← survives the stray Option unnoticed. That asymmetry is
+    /// exactly the "the word gets selected but nothing else happens" symptom.
+    private func afterOptionReleased(_ work: @escaping () -> Void) {
+        func poll(_ attemptsLeft: Int) {
+            let held = CGEventSource.flagsState(.combinedSessionState)
+            guard held.contains(.maskAlternate), attemptsLeft > 0 else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.modifierSettleDelay, execute: work)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { poll(attemptsLeft - 1) }
         }
-        return converted
+        poll(20)
     }
 
     // MARK: - Input source

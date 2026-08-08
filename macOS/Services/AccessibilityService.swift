@@ -101,8 +101,8 @@ class AccessibilityService {
     /// Chromium and Electron ship with accessibility off and only turn it on when
     /// a client sets `AXManualAccessibility` — without this, `focusedElement()`
     /// returns the window with no text attributes in VS Code, Slack, Chrome, etc.
-    /// The tree is built asynchronously, so the very first attempt in such an app
-    /// still falls back to the clipboard path; later ones use AX.
+    /// The tree is built asynchronously, so the first attempt in such an app sees
+    /// nothing and later ones do. Only reads are ever taken from it.
     func enableManualAccessibility() {
         guard let app = NSWorkspace.shared.frontmostApplication else { return }
         let pid = app.processIdentifier
@@ -140,49 +140,6 @@ class AccessibilityService {
         return text
     }
 
-    /// Up to `maxLength` UTF-16 units of text sitting immediately before the
-    /// caret, plus the absolute offset where that chunk begins.
-    ///
-    /// Deliberately does not read `kAXValue` first: in a large document that
-    /// copies the whole text across the process boundary on every hotkey press.
-    /// The parameterized `kAXStringForRange` attribute fetches only the tail;
-    /// `kAXValue` is the fallback for elements that don't implement it.
-    ///
-    /// Returns nil when the caret is at offset 0, when a selection exists (that
-    /// case is handled by `selectedText`), or when the element isn't text.
-    func textBeforeCaret(of element: AXUIElement, maxLength: Int) -> (chunk: String, chunkStart: Int)? {
-        guard let selection = selectedRange(of: element), selection.length == 0 else { return nil }
-        let caret = selection.location
-        guard caret > 0 else { return nil }
-
-        let start = max(0, caret - maxLength)
-        var cfRange = CFRange(location: start, length: caret - start)
-
-        if let axRange = AXValueCreate(.cfRange, &cfRange) {
-            var result: CFTypeRef?
-            let err = AXUIElementCopyParameterizedAttributeValue(
-                element,
-                kAXStringForRangeParameterizedAttribute as CFString,
-                axRange,
-                &result
-            )
-            if err == .success, let chunk = result as? String, !chunk.isEmpty {
-                // Derive the start from what we actually got back rather than
-                // what we asked for, so a short read can't shift the offsets.
-                return (chunk, caret - chunk.utf16.count)
-            }
-        }
-
-        var valueRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success,
-              let text = valueRef as? String,
-              caret <= text.utf16.count,
-              let range = Range(NSRange(location: start, length: caret - start), in: text)
-        else { return nil }
-
-        return (String(text[range]), start)
-    }
-
     func selectedRange(of element: AXUIElement) -> CFRange? {
         var valueRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &valueRef) == .success,
@@ -198,40 +155,18 @@ class AccessibilityService {
         return range
     }
 
-    @discardableResult
-    func setSelectedRange(_ range: Range<Int>, of element: AXUIElement) -> Bool {
-        var cfRange = CFRange(location: range.lowerBound, length: range.count)
-        guard let axValue = AXValueCreate(.cfRange, &cfRange) else { return false }
-        let err = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, axValue)
-        return err == .success
-    }
-
-    /// Replaces the current selection with `text` through AX.
-    ///
-    /// Preferred over the clipboard path: it leaves the pasteboard untouched and
-    /// needs no synthetic keystrokes. Returns false when the element refuses the
-    /// write, so the caller can fall back.
-    func replaceSelectedText(_ text: String, of element: AXUIElement) -> Bool {
-        var settable: DarwinBoolean = false
-        guard AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success,
-              settable.boolValue
-        else {
-            flog("replaceSelectedText: kAXSelectedText not settable")
-            return false
-        }
-
-        let err = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString)
-        if err != .success {
-            flog("replaceSelectedText: set failed, err=\(err.rawValue)")
-        }
-        return err == .success
-    }
-
     // MARK: - Synthetic keystrokes
+
+    /// Events posted from a `.hidSystemState` source inherit the modifiers the
+    /// user is physically holding, OR-ed on top of whatever flags we set. That
+    /// is fatal right after an Option tap: the key-up is still propagating, so a
+    /// posted ⌘C arrives as ⌥⌘C and the app doesn't treat it as Copy. A private
+    /// source carries no hardware state, so the flags are exactly ours.
+    private static let syntheticSource = CGEventSource(stateID: .privateState)
 
     /// Posts a key down/up pair with the given modifier flags.
     func postKeystroke(virtualKey: CGKeyCode, flags: CGEventFlags) {
-        let source = CGEventSource(stateID: .hidSystemState)
+        let source = Self.syntheticSource
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false)
         else {

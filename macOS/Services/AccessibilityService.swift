@@ -115,6 +115,20 @@ class AccessibilityService {
         flog("enableManualAccessibility: requested for \(app.bundleIdentifier ?? "?") pid=\(pid)")
     }
 
+    var frontmostBundleIdentifier: String? {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    }
+
+    /// AX role of an element, for diagnostics — it's the quickest way to tell a
+    /// real text field from an Electron app's hidden screen-reader textarea.
+    func role(of element: AXUIElement) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .success else {
+            return nil
+        }
+        return value as? String
+    }
+
     /// Currently selected text in `element`, or nil when the element exposes no
     /// selection. An empty selection reads back as nil, not "".
     func selectedText(of element: AXUIElement) -> String? {

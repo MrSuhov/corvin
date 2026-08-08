@@ -88,6 +88,32 @@ fi
 mkdir -p "$APP_DIR/Frameworks"
 /usr/bin/ditto "$SPARKLE_FW" "$APP_DIR/Frameworks/Sparkle.framework"
 
+# Embed the Swift concurrency back-deployment library.
+#
+# macOS 12 and later ship libswift_Concurrency.dylib in /usr/lib/swift, so the
+# binary's @rpath reference resolves against the OS and everything works. macOS
+# 11 has no such library. The reference is *weak*, so dyld does not refuse to
+# launch — it binds the symbols to NULL, and the app dies the first time it
+# touches concurrency metadata (any `Task {}`), with a null dereference deep in
+# swift_getTypeByMangledNameInContext that names nothing concurrency-related:
+#
+#   EXC_BAD_ACCESS (SIGSEGV) KERN_INVALID_ADDRESS at 0x0
+#   swift::ResolveAsSymbolicReference::operator()
+#
+# Xcode embeds this library automatically; this script assembles the bundle by
+# hand, so it has to do it too. @executable_path/../Frameworks is already in the
+# binary's rpath list, so dropping it here is enough. The toolchain copy is
+# universal and, for the macOS platform, goes back to 10.9 (x86_64) / 11.0
+# (arm64) — the minos 13.1 in its x86_64 slice belongs to the Mac Catalyst load
+# command, not to macOS.
+echo "  Embedding libswift_Concurrency.dylib (macOS 11 back-deployment)..."
+SWIFT_BACKDEPLOY="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.5/macosx/libswift_Concurrency.dylib"
+if [ ! -f "$SWIFT_BACKDEPLOY" ]; then
+    echo "ERROR: libswift_Concurrency.dylib not found at $SWIFT_BACKDEPLOY"
+    exit 1
+fi
+/usr/bin/ditto "$SWIFT_BACKDEPLOY" "$APP_DIR/Frameworks/libswift_Concurrency.dylib"
+
 # Load local signing config (gitignored). Copy signing.env.example -> signing.env.
 [ -f "$PROJECT_DIR/signing.env" ] && source "$PROJECT_DIR/signing.env"
 SIGN_IDENTITY="${SIGN_IDENTITY:?Set SIGN_IDENTITY (copy signing.env.example to signing.env)}"
@@ -104,11 +130,29 @@ for xpc in "$SPARKLE_VER/XPCServices/"*.xpc; do
     [ -e "$xpc" ] && codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$xpc"
 done
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$SP"
+codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR/Frameworks/libswift_Concurrency.dylib"
 
 codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$BUILD_DIR/Corvin.app/Contents/MacOS/Corvin"
 codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$BUILD_DIR/Corvin.app"
 codesign --verify --deep --strict "$BUILD_DIR/Corvin.app"
 echo "  Signature verified."
+
+# Guard against the whole class of "weak @rpath dylib is simply missing" bugs.
+# Those references do not fail at launch — dyld nulls them out — so the app
+# only crashes later, on a machine old enough to lack the library in the OS.
+# Anything the binary reaches for via @rpath must actually be in the bundle.
+echo "  Checking @rpath dependencies are embedded..."
+MISSING=0
+for dep in $(otool -L "$APP_DIR/MacOS/Corvin" | awk '/@rpath\//{print $1}' | sort -u); do
+    rel="${dep#@rpath/}"
+    if [ ! -e "$APP_DIR/Frameworks/$rel" ]; then
+        echo "  ERROR: $dep is referenced but not embedded in Contents/Frameworks"
+        MISSING=1
+    else
+        echo "    ok  $rel"
+    fi
+done
+[ "$MISSING" -eq 0 ] || exit 1
 
 rm -f "$DMG_PATH"
 if command -v create-dmg &>/dev/null; then

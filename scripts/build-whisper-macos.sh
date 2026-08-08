@@ -6,6 +6,36 @@ WHISPER_DIR="$PROJECT_DIR/vendor/whisper.cpp"
 
 echo "=== Building whisper.cpp universal libraries (arm64 + x86_64) ==="
 
+# ggml-blas unconditionally builds against Accelerate's ILP64 BLAS by defining
+# ACCELERATE_NEW_LAPACK + ACCELERATE_LAPACK_ILP64. Those headers rename the
+# entry points to cblas_sgemm$NEWLAPACK$ILP64 and friends, which only exist in
+# Accelerate from macOS 13.3 onwards. Against a 11.0 deployment target the link
+# still succeeds — the symbols bind lazily — and the app then aborts the first
+# time it actually multiplies a matrix:
+#
+#   Termination Reason: DYLD, [0x4] Symbol missing
+#   Symbol not found: _cblas_sgemm$NEWLAPACK$ILP64
+#
+# which lands in whisper_encode_internal during model warm-up, i.e. at launch.
+# Dropping the two defines falls back to the classic 32-bit-int BLAS interface
+# that has always been there. ILP64 exists for matrices with more than 2^31
+# elements per dimension; whisper is orders of magnitude below that.
+#
+# vendor/ is gitignored, so this has to be re-applied on every checkout rather
+# than committed as a patch to the vendored tree.
+patch_ggml_blas_for_old_macos() {
+    local cmakelists="$WHISPER_DIR/ggml/src/ggml-blas/CMakeLists.txt"
+    [ -f "$cmakelists" ] || return 0
+    if grep -q "ACCELERATE_NEW_LAPACK" "$cmakelists"; then
+        /usr/bin/sed -i '' \
+            -e '/add_compile_definitions(ACCELERATE_NEW_LAPACK)/d' \
+            -e '/add_compile_definitions(ACCELERATE_LAPACK_ILP64)/d' \
+            "$cmakelists"
+        echo "  patched ggml-blas: dropped ILP64 Accelerate defines (macOS 11/12 compatibility)"
+    fi
+}
+patch_ggml_blas_for_old_macos
+
 build_whisper_arch() {
     local arch=$1
     local extra_flags=""

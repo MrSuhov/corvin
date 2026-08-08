@@ -3,6 +3,20 @@
     <channel>
         <title>Corvin</title>
         <item>
+            <title>1.2.1</title>
+            <pubDate>Sat, 08 Aug 2026 21:32:05 +0300</pubDate>
+            <sparkle:version>202608082127</sparkle:version>
+            <sparkle:shortVersionString>1.2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin-1.2.1.dmg" length="451479594" type="application/octet-stream" sparkle:edSignature="Z5SIh1Qp5R5vpalvof91d1aAvVIJ7HHNCHGUzNKoWx08OX3J8Lfid6E0y5o+yatO56aqKgiizdVFE1wNfvrGAQ=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608082127-202608082056.delta" sparkle:deltaFrom="202608082056" length="273762" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="eTUl4bl/kcG8f8xdAiApWwanhxTIeVpPv4I/1p2HJDzZ+jmkmDDBCocaFk60Mq24rGVdra9djazL7LnnY+pJAQ=="/>
+                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608082127-202608082019.delta" sparkle:deltaFrom="202608082019" length="313910" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="zTAyRVWmhtT0i6JEqyrS7kQH5Ncu/gAmEc9YzRjobFirBVrpc/7+DB4DWQCvNZaPKUUAuUVjXS8rRkUORj6lAg=="/>
+                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608082127-202608030907.delta" sparkle:deltaFrom="202608030907" length="442842" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="EKSZm04URqtjP1hAaOP/FcBrzk1DhB5v+mjMlwGT4Wdj+LLP6FQEXAQE9xR04J0JdDcXgI5hoRI/gzJeroi2Cw=="/>
+                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608082127-202606071835.delta" sparkle:deltaFrom="202606071835" length="515086" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="cSCOLvjpAr5a6i9dzvWmcKEvoYeuCD2z+dzrF34jkvPXNhD7JIfKMMl3HmLWdMNGfPKKSbosFTGNqA2A5nmRAw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.2.0</title>
             <pubDate>Sat, 08 Aug 2026 21:01:05 +0300</pubDate>
             <sparkle:version>202608082056</sparkle:version>
@@ -25,17 +39,6 @@
             <sparkle:deltas>
                 <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608082019-202608030907.delta" sparkle:deltaFrom="202608030907" length="420158" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="4gMDabuNzC6qpmCyFPY/JnswMtdLdMHKwpsIqIW4LFP3Psz6FSsp02QRbbhI6cYBInnEfUq87oxQVnw0xZ/FBg=="/>
                 <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608082019-202606071835.delta" sparkle:deltaFrom="202606071835" length="495738" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="fpIdcaXeppZCFe9Y+xcjkdq/4+QFD5ZED9j0/9SKYcRxBJYzHzRLWqJLRJHNWV22qRjQ2gVZ0r1YqxhxI7ZgAg=="/>
-            </sparkle:deltas>
-        </item>
-        <item>
-            <title>1.0.2</title>
-            <pubDate>Mon, 03 Aug 2026 09:12:20 +0300</pubDate>
-            <sparkle:version>202608030907</sparkle:version>
-            <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin-1.0.2.dmg" length="451376870" type="application/octet-stream" sparkle:edSignature="nfi8M2WoOcCqnyO7bRM9hIBozdQiM0VmNgMlGeqUoSwnGORWTfZmWC1JyI/1tJqOSWi3AS04z8aOb0knlA3mAw=="/>
-            <sparkle:deltas>
-                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608030907-202606071835.delta" sparkle:deltaFrom="202606071835" length="344326" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="uguau/ctZqjEMaD+eJ4TA3PNXqJPz6C8Z2Mb8nppitvvaslW2WIhFNobWe3sYLOD17wFadGL1mVtMBOhT2zlDA=="/>
             </sparkle:deltas>
         </item>
     </channel>

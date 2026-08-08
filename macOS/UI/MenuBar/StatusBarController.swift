@@ -12,6 +12,7 @@ class StatusBarController: NSObject {
     /// Mirrors `UpdaterService.pendingUpdateVersion`; drives both the badge on
     /// the icon and the "Обновить" menu item.
     private var pendingUpdateVersion: String?
+    private var updateProgress: UpdaterService.Progress?
     private var lastState: SessionState = .idle
     private var cancellables = Set<AnyCancellable>()
 
@@ -34,6 +35,17 @@ class StatusBarController: NSObject {
             .sink { [weak self] version in
                 guard let self = self, self.pendingUpdateVersion != version else { return }
                 self.pendingUpdateVersion = version
+                self.updateState(self.lastState)
+            }
+            .store(in: &cancellables)
+
+        // The update runs headlessly, so this menu item is the only place the
+        // user can see it happening at all.
+        UpdaterService.shared.$progress
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] progress in
+                guard let self = self, self.updateProgress != progress else { return }
+                self.updateProgress = progress
                 self.updateState(self.lastState)
             }
             .store(in: &cancellables)
@@ -206,25 +218,30 @@ class StatusBarController: NSObject {
         settings.target = self
         menu.addItem(settings)
 
-        // Two different actions behind one slot. With nothing found, the item
-        // kicks off a silent probe — no window, no app activation, the answer
-        // arrives as the dot on the icon. Once a version is known, the same slot
-        // becomes the install action, which is where Sparkle's UI belongs.
+        // One slot, three states. Idle it starts a silent probe — no window, no
+        // app activation, the answer arrives as the dot on the icon. With a
+        // version found it becomes the install action. While the update runs it
+        // reports progress and is not clickable, since the update has no UI of
+        // its own to show it in.
         let updates: NSMenuItem
-        if let version = pendingUpdateVersion {
+        if let progress = updateProgress {
+            updates = NSMenuItem(title: Self.progressTitle(progress), action: nil, keyEquivalent: "")
+            updates.isEnabled = false
+        } else if let version = pendingUpdateVersion {
             updates = NSMenuItem(
                 title: "Обновить до \(version)",
                 action: #selector(UpdaterService.installUpdate(_:)),
                 keyEquivalent: ""
             )
+            updates.target = UpdaterService.shared
         } else {
             updates = NSMenuItem(
                 title: "Проверить обновления...",
                 action: #selector(UpdaterService.checkForUpdatesInBackground(_:)),
                 keyEquivalent: ""
             )
+            updates.target = UpdaterService.shared
         }
-        updates.target = UpdaterService.shared
         menu.addItem(updates)
 
         let about = NSMenuItem(title: "О программе", action: #selector(showAbout), keyEquivalent: "")
@@ -236,6 +253,22 @@ class StatusBarController: NSObject {
         menu.addItem(quit)
 
         self.statusItem.menu = menu
+    }
+
+    private static func progressTitle(_ progress: UpdaterService.Progress) -> String {
+        func percent(_ fraction: Double) -> String { "\(Int(fraction * 100))%" }
+
+        switch progress {
+        case .starting:
+            return "Обновление…"
+        case .downloading(let fraction):
+            guard let fraction = fraction else { return "Загрузка…" }
+            return "Загрузка \(percent(fraction))"
+        case .extracting(let fraction):
+            return "Распаковка \(percent(fraction))"
+        case .installing:
+            return "Установка, перезапуск…"
+        }
     }
 
     @objc private func copyRecord(_ sender: NSMenuItem) {

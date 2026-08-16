@@ -42,6 +42,11 @@ final class LayoutSwitchService {
     /// Pause after ⌘V before the pasteboard is rewound to the user's content.
     private static let pasteSettleDelay: TimeInterval = 0.25
 
+    /// Ceiling on the run of characters `selectPrecedingToken` will walk back
+    /// over, so a paragraph with no spaces can't turn into hundreds of
+    /// synthetic keystrokes.
+    private static let maxTokenLength = 64
+
     private enum VirtualKey {
         static let c: CGKeyCode = 0x08
         static let v: CGKeyCode = 0x09
@@ -111,8 +116,8 @@ final class LayoutSwitchService {
             completion(true)
 
         case .caretOnly:
-            flog("layoutSwitch: AX reports a caret with no selection, taking the previous word")
-            selectPreviousWord(then: completion)
+            flog("layoutSwitch: AX reports a caret with no selection, taking the preceding token")
+            selectPrecedingToken(then: completion)
 
         case .unknown:
             // No usable AX. Probe with ⌘C: if the pasteboard doesn't move there
@@ -129,7 +134,7 @@ final class LayoutSwitchService {
                 if text != nil {
                     flog("layoutSwitch: probe returned a whole line, treating as no selection")
                 }
-                self.selectPreviousWord(then: completion)
+                self.selectPrecedingToken(then: completion)
             }
         }
     }
@@ -154,14 +159,69 @@ final class LayoutSwitchService {
         return .caretOnly
     }
 
-    private func selectPreviousWord(then completion: @escaping (Bool) -> Void) {
-        accessibility.postKeystroke(
-            virtualKey: VirtualKey.leftArrow,
-            flags: [.maskShift, .maskAlternate]
-        )
+    /// Selects everything between the caret and the nearest whitespace to its
+    /// left.
+    ///
+    /// Not Shift+Option+←, which selects by *word*: macOS word motion stops at
+    /// punctuation, so `'nj` selects only `nj` and `§rt` only `rt`, leaving the
+    /// leading character behind untranslated — and a token that is nothing but
+    /// punctuation selects nothing at all. Punto-style conversion works on the
+    /// whole space-delimited token, punctuation included, so the boundary is
+    /// computed from the text itself and walked with plain Shift+←.
+    ///
+    /// Falls back to word motion when AX won't hand over the text.
+    private func selectPrecedingToken(then completion: @escaping (Bool) -> Void) {
+        if let length = precedingTokenLength() {
+            guard length > 0 else {
+                flog("layoutSwitch: caret is at a whitespace boundary, nothing to convert")
+                return completion(false)
+            }
+            flog("layoutSwitch: selecting \(length) chars back to the whitespace boundary")
+            for _ in 0..<length {
+                accessibility.postKeystroke(virtualKey: VirtualKey.leftArrow, flags: .maskShift)
+            }
+        } else {
+            flog("layoutSwitch: AX exposes no text, falling back to word-motion selection")
+            accessibility.postKeystroke(
+                virtualKey: VirtualKey.leftArrow,
+                flags: [.maskShift, .maskAlternate]
+            )
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.selectionSettleDelay) {
             completion(true)
         }
+    }
+
+    /// How many characters sit between the caret and the whitespace before it,
+    /// or nil when the focused element won't say.
+    ///
+    /// Counted in UTF-16 units because that is what `kAXSelectedTextRange`
+    /// speaks; for the Latin and Cyrillic this feature deals in, one unit is one
+    /// press of ←. A surrogate pair ends the token rather than risking a
+    /// half-character selection.
+    private func precedingTokenLength() -> Int? {
+        guard let element = accessibility.focusedElement(),
+              let range = accessibility.selectedRange(of: element),
+              let text = accessibility.value(of: element)
+        else { return nil }
+        return Self.precedingTokenLength(in: text, caret: range.location)
+    }
+
+    static func precedingTokenLength(in text: String, caret: Int) -> Int? {
+        let units = Array(text.utf16)
+        guard caret >= 0, caret <= units.count else { return nil }
+
+        var length = 0
+        var index = caret - 1
+        while index >= 0, length < maxTokenLength {
+            guard let scalar = Unicode.Scalar(units[index]),
+                  !CharacterSet.whitespacesAndNewlines.contains(scalar)
+            else { break }
+            length += 1
+            index -= 1
+        }
+        return length
     }
 
     // MARK: - Steps 2 and 3: read, convert, paste

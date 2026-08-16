@@ -140,6 +140,15 @@ class AccessibilityService {
         return text
     }
 
+    /// Full text of `element`, when it is a text control that exposes one.
+    func value(of element: AXUIElement) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success else {
+            return nil
+        }
+        return value as? String
+    }
+
     func selectedRange(of element: AXUIElement) -> CFRange? {
         var valueRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &valueRef) == .success,

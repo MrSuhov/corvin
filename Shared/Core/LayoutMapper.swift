@@ -95,11 +95,16 @@ enum LayoutMapper {
 
     /// Picks a direction by counting which alphabet dominates the text.
     ///
-    /// Ties — including text with no letters at all — resolve to `.enToRu`,
-    /// matching the common case of Latin gibberish that should have been
-    /// Russian. Applying one direction to the whole string (rather than
-    /// per-character) keeps the transform reversible: pressing the hotkey twice
-    /// returns the original text.
+    /// Applying one direction to the whole string (rather than per-character)
+    /// keeps the transform reversible: pressing the hotkey twice returns the
+    /// original text.
+    ///
+    /// Letters settle it whenever there are any. Punctuation cannot: most of it
+    /// sits in *both* tables, on different keys. `"` is Shift+quote in the US
+    /// layout, where the same key gives `Э` — and Shift+2 in the Russian one,
+    /// where the same key gives `@`. Both readings are legitimate, and the text
+    /// alone does not say which happened, so a letterless token falls through to
+    /// the layout that was active when it was typed.
     static func detectDirection(_ text: String) -> Direction {
         var cyrillic = 0
         var latin = 0
@@ -110,7 +115,25 @@ enum LayoutMapper {
                 latin += 1
             }
         }
-        return cyrillic > latin ? .ruToEn : .enToRu
+        if cyrillic != latin {
+            return cyrillic > latin ? .ruToEn : .enToRu
+        }
+
+        // The current input source is a guess, not evidence — the user may have
+        // switched layouts before reaching for the hotkey. So if it points at a
+        // direction that would leave the text untouched while the other one has
+        // something to say, take the other: a silent no-op is the one outcome
+        // that is certainly wrong.
+        let guess = currentInputSourceDirection ?? .enToRu
+        if !hasMapping(text, guess), hasMapping(text, guess.flipped) {
+            return guess.flipped
+        }
+        return guess
+    }
+
+    private static func hasMapping(_ text: String, _ direction: Direction) -> Bool {
+        let table = tables.table(for: direction)
+        return text.contains { table[$0] != nil }
     }
 }
 
@@ -201,6 +224,24 @@ extension LayoutMapper {
         return codes
     }
 
+    /// Which way the layout that is active *right now* points, when it is one of
+    /// the two this feature knows about.
+    ///
+    /// Read fresh every time: it is the one input that changes between one
+    /// conversion and the next. The keyboard *layout* source rather than the
+    /// input source, so an active input method doesn't hide the layout under it.
+    static var currentInputSourceDirection: Direction? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let language = (property(source, kTISPropertyInputSourceLanguages) as? [String])?.first
+        else { return nil }
+
+        switch language {
+        case "ru": return .ruToEn
+        case "en": return .enToRu
+        default: return nil
+        }
+    }
+
     private static func enabledKeyboardSource(language: String) -> TISInputSource? {
         guard let sources = TISCreateInputSourceList(nil, false)?.takeRetainedValue() as? [TISInputSource] else {
             return nil
@@ -250,5 +291,6 @@ extension LayoutMapper {
 #else
 extension LayoutMapper {
     static var tables: Tables { fallbackTables }
+    static var currentInputSourceDirection: Direction? { nil }
 }
 #endif

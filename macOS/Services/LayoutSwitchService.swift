@@ -14,15 +14,17 @@ import Carbon
 /// after the fact either. ⌘C / ⌘V behave the same everywhere, and are what the
 /// dictation path already relies on.
 ///
-/// AX is still used, read-only, for the one thing the pasteboard can't answer
-/// cleanly: whether a selection exists right now. Editors copy the whole
-/// current line when ⌘C runs with an empty selection, so without that hint a
-/// caret resting in a line looks exactly like a selected line.
+/// AX *reads*, on the other hand, are used freely — for whether a selection
+/// exists right now (editors copy the whole current line when ⌘C runs with an
+/// empty selection, so without that hint a caret resting in a line looks
+/// exactly like a selected line), and for the text itself where the element
+/// offers it.
 ///
-/// The flow is uniform:
-///   1. make sure the target text is really selected (it already is, or
-///      Shift+Option+← selects the previous word),
-///   2. ⌘C to read exactly what the app has selected — the authoritative value,
+/// The flow:
+///   1. get the target text selected — it already is, or the token behind the
+///      caret is selected with Shift+←,
+///   2. work out what it says: from the AX text when the selection can be
+///      confirmed to match what was aimed at, otherwise with ⌘C,
 ///   3. convert, put it on the pasteboard, ⌘V, restore the pasteboard.
 final class LayoutSwitchService {
 
@@ -92,9 +94,8 @@ final class LayoutSwitchService {
 
         afterOptionReleased { [weak self] in
             guard let self = self else { return finish() }
-            self.selectTarget { ready in
-                guard ready else { return finish() }
-                self.convertSelection(then: finish)
+            self.selectTarget { target in
+                self.convert(target, then: finish)
             }
         }
     }
@@ -107,13 +108,23 @@ final class LayoutSwitchService {
         case unknown
     }
 
+    /// What the ⌘V is about to replace.
+    private enum Target {
+        /// Selected, and its text is already in hand — no ⌘C needed.
+        case known(String)
+        /// Selected, but only the app knows what it says; read it with ⌘C.
+        case opaque
+        /// Nothing to convert.
+        case nothing
+    }
+
     /// Leaves the app with the text to convert selected, so the ⌘V that follows
     /// replaces it instead of inserting beside it.
-    private func selectTarget(completion: @escaping (Bool) -> Void) {
+    private func selectTarget(completion: @escaping (Target) -> Void) {
         switch selectionStateFromAccessibility() {
         case .hasSelection:
             flog("layoutSwitch: AX reports an existing selection")
-            completion(true)
+            completion(.opaque)
 
         case .caretOnly:
             flog("layoutSwitch: AX reports a caret with no selection, taking the preceding token")
@@ -125,10 +136,12 @@ final class LayoutSwitchService {
             // copy-the-current-line behaviour editors fall back to, which also
             // means there was no selection.
             flog("layoutSwitch: AX unavailable, probing with ⌘C")
-            copySelection(label: "probe") { [weak self] text in
-                guard let self = self else { return completion(false) }
+            copySelection(label: "probe", attempts: 1) { [weak self] text in
+                guard let self = self else { return completion(.nothing) }
+                // The probe already read the selection; a second ⌘C would only
+                // be another chance to fail.
                 if let text = text, !text.contains(where: \.isNewline) {
-                    completion(true)
+                    completion(.known(text))
                     return
                 }
                 if text != nil {
@@ -170,42 +183,94 @@ final class LayoutSwitchService {
     /// computed from the text itself and walked with plain Shift+←.
     ///
     /// Falls back to word motion when AX won't hand over the text.
-    private func selectPrecedingToken(then completion: @escaping (Bool) -> Void) {
-        if let length = precedingTokenLength() {
-            guard length > 0 else {
-                flog("layoutSwitch: caret is at a whitespace boundary, nothing to convert")
-                return completion(false)
-            }
-            flog("layoutSwitch: selecting \(length) chars back to the token boundary")
-            for _ in 0..<length {
-                accessibility.postKeystroke(virtualKey: VirtualKey.leftArrow, flags: .maskShift)
-            }
-        } else {
+    private func selectPrecedingToken(then completion: @escaping (Target) -> Void) {
+        guard let plan = tokenSelectionPlan() else {
             flog("layoutSwitch: AX exposes no text, falling back to word-motion selection")
             accessibility.postKeystroke(
                 virtualKey: VirtualKey.leftArrow,
                 flags: [.maskShift, .maskAlternate]
             )
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.selectionSettleDelay) {
+                completion(.opaque)
+            }
+            return
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.selectionSettleDelay) {
-            completion(true)
+        guard plan.length > 0 else {
+            flog("layoutSwitch: caret is at a whitespace boundary, nothing to convert")
+            return completion(.nothing)
+        }
+
+        flog("layoutSwitch: selecting \(plan.length) chars back to the token boundary")
+        for _ in 0..<plan.length {
+            accessibility.postKeystroke(virtualKey: VirtualKey.leftArrow, flags: .maskShift)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay(afterKeystrokes: plan.length)) {
+            [weak self] in
+            guard let self = self else { return completion(.nothing) }
+            completion(self.verifiedTarget(for: plan))
         }
     }
 
-    /// How many characters to select back from the caret, or nil when the
-    /// focused element won't say. Zero means there is nothing to convert.
+    /// Confirms the arrow keys landed on exactly the range they aimed at.
     ///
-    /// Counted in UTF-16 units because that is what `kAXSelectedTextRange`
+    /// When they did, the text AX handed over while measuring the token is
+    /// authoritative and the ⌘C can be skipped entirely — which is the point.
+    /// That ⌘C is the step that intermittently comes back empty right after a
+    /// burst of synthetic arrow keys, leaving the word selected but unchanged
+    /// until the user taps again. Re-reading the range costs one AX call and
+    /// removes the whole round trip through the app and the pasteboard.
+    private func verifiedTarget(for plan: TokenSelectionPlan) -> Target {
+        guard let element = accessibility.focusedElement(),
+              let range = accessibility.selectedRange(of: element),
+              range.location == plan.caret - plan.length,
+              range.length == plan.length
+        else {
+            flog("layoutSwitch: selection didn't land where planned, falling back to ⌘C")
+            return .opaque
+        }
+        return .known(plan.token)
+    }
+
+    /// A burst of arrow keys takes the target app proportionally longer to work
+    /// through than a single one, so the wait grows with the count.
+    private func settleDelay(afterKeystrokes count: Int) -> TimeInterval {
+        min(Self.selectionSettleDelay + 0.004 * Double(count), 0.25)
+    }
+
+    private struct TokenSelectionPlan {
+        /// Caret offset the selection starts from, in UTF-16 units.
+        let caret: Int
+        /// How many units to select back from it.
+        let length: Int
+        /// What those units say.
+        let token: String
+    }
+
+    /// What to select behind the caret, or nil when the focused element won't
+    /// say. A zero length means there is nothing to convert.
+    ///
+    /// Measured in UTF-16 units because that is what `kAXSelectedTextRange`
     /// speaks; for the Latin and Cyrillic this feature deals in, one unit is one
     /// press of ←. A surrogate pair ends the token rather than risking a
     /// half-character selection.
-    private func precedingTokenLength() -> Int? {
+    private func tokenSelectionPlan() -> TokenSelectionPlan? {
         guard let element = accessibility.focusedElement(),
               let range = accessibility.selectedRange(of: element),
-              let text = accessibility.value(of: element)
+              let text = accessibility.value(of: element),
+              let found = Self.precedingToken(in: text, caret: range.location)
         else { return nil }
-        return Self.precedingTokenLength(in: text, caret: range.location)
+
+        return TokenSelectionPlan(caret: range.location, length: found.length, token: found.token)
+    }
+
+    static func precedingToken(in text: String, caret: Int) -> (length: Int, token: String)? {
+        guard let length = precedingTokenLength(in: text, caret: caret) else { return nil }
+        let units = Array(text.utf16)
+        let start = caret - length
+        guard start >= 0, caret <= units.count else { return nil }
+        return (length, String(decoding: units[start..<caret], as: UTF16.self))
     }
 
     static func precedingTokenLength(in text: String, caret: Int) -> Int? {
@@ -241,54 +306,73 @@ final class LayoutSwitchService {
 
     // MARK: - Steps 2 and 3: read, convert, paste
 
-    private func convertSelection(then completion: @escaping () -> Void) {
-        copySelection(label: "target") { [weak self] text in
-            guard let self = self else { return completion() }
+    private func convert(_ target: Target, then completion: @escaping () -> Void) {
+        switch target {
+        case .nothing:
+            completion()
 
-            guard let original = text else {
-                flog("layoutSwitch: nothing selected to convert")
-                return completion()
-            }
+        case .known(let original):
+            replaceSelection(with: original, then: completion)
 
-            let converted = LayoutMapper.convert(original)
-            guard converted != original else {
-                // Digits, spaces, symbols shared by both layouts: replacing them
-                // would be a pointless edit that still dirties the undo stack.
-                flog("layoutSwitch: conversion is a no-op, skipping")
-                return completion()
-            }
-
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString(converted, forType: .string)
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.selectionSettleDelay) {
-                self.accessibility.postKeystroke(virtualKey: VirtualKey.v, flags: .maskCommand)
-                flog("layoutSwitch: replaced '\(original)' -> '\(converted)'")
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + Self.pasteSettleDelay) {
-                    self.applyInputSourceSwitch(for: original)
-                    completion()
+        case .opaque:
+            copySelection(label: "target") { [weak self] text in
+                guard let self = self else { return completion() }
+                guard let original = text else {
+                    flog("layoutSwitch: nothing selected to convert")
+                    return completion()
                 }
+                self.replaceSelection(with: original, then: completion)
+            }
+        }
+    }
+
+    private func replaceSelection(with original: String, then completion: @escaping () -> Void) {
+        let converted = LayoutMapper.convert(original)
+        guard converted != original else {
+            // Digits, spaces, symbols shared by both layouts: replacing them
+            // would be a pointless edit that still dirties the undo stack.
+            flog("layoutSwitch: conversion is a no-op, skipping")
+            return completion()
+        }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(converted, forType: .string)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.selectionSettleDelay) {
+            self.accessibility.postKeystroke(virtualKey: VirtualKey.v, flags: .maskCommand)
+            flog("layoutSwitch: replaced '\(original)' -> '\(converted)'")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.pasteSettleDelay) {
+                self.applyInputSourceSwitch(for: original)
+                completion()
             }
         }
     }
 
     /// Sends ⌘C and waits for the pasteboard to actually change. Returns nil
     /// when nothing was copied.
-    private func copySelection(label: String, completion: @escaping (String?) -> Void) {
+    ///
+    /// Retried once by default: a Copy posted moments after other synthetic
+    /// keystrokes sometimes lands with nothing to show for it, and a second one
+    /// against the same selection goes through.
+    private func copySelection(label: String, attempts: Int = 2, completion: @escaping (String?) -> Void) {
         let pasteboard = NSPasteboard.general
         let changeCountBefore = pasteboard.changeCount
 
         accessibility.postKeystroke(virtualKey: VirtualKey.c, flags: .maskCommand)
 
-        pollPasteboard(changeCountBefore: changeCountBefore, attemptsLeft: 20) { changed in
-            guard changed, let text = pasteboard.string(forType: .string), !text.isEmpty else {
+        pollPasteboard(changeCountBefore: changeCountBefore, attemptsLeft: 20) { [weak self] changed in
+            if changed, let text = pasteboard.string(forType: .string), !text.isEmpty {
+                flog("layoutSwitch: ⌘C for \(label) got \(text.count) chars")
+                return completion(text)
+            }
+            guard let self = self, attempts > 1 else {
                 flog("layoutSwitch: ⌘C for \(label) produced no pasteboard change")
                 return completion(nil)
             }
-            flog("layoutSwitch: ⌘C for \(label) got \(text.count) chars")
-            completion(text)
+            flog("layoutSwitch: ⌘C for \(label) produced no pasteboard change, retrying")
+            self.copySelection(label: label, attempts: attempts - 1, completion: completion)
         }
     }
 

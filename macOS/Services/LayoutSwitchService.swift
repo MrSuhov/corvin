@@ -159,8 +159,8 @@ final class LayoutSwitchService {
         return .caretOnly
     }
 
-    /// Selects everything between the caret and the nearest whitespace to its
-    /// left.
+    /// Selects the token behind the caret, together with any spaces the caret
+    /// is resting after.
     ///
     /// Not Shift+Option+←, which selects by *word*: macOS word motion stops at
     /// punctuation, so `'nj` selects only `nj` and `§rt` only `rt`, leaving the
@@ -176,7 +176,7 @@ final class LayoutSwitchService {
                 flog("layoutSwitch: caret is at a whitespace boundary, nothing to convert")
                 return completion(false)
             }
-            flog("layoutSwitch: selecting \(length) chars back to the whitespace boundary")
+            flog("layoutSwitch: selecting \(length) chars back to the token boundary")
             for _ in 0..<length {
                 accessibility.postKeystroke(virtualKey: VirtualKey.leftArrow, flags: .maskShift)
             }
@@ -193,8 +193,8 @@ final class LayoutSwitchService {
         }
     }
 
-    /// How many characters sit between the caret and the whitespace before it,
-    /// or nil when the focused element won't say.
+    /// How many characters to select back from the caret, or nil when the
+    /// focused element won't say. Zero means there is nothing to convert.
     ///
     /// Counted in UTF-16 units because that is what `kAXSelectedTextRange`
     /// speaks; for the Latin and Cyrillic this feature deals in, one unit is one
@@ -212,16 +212,31 @@ final class LayoutSwitchService {
         let units = Array(text.utf16)
         guard caret >= 0, caret <= units.count else { return nil }
 
-        var length = 0
+        func scalar(at index: Int) -> Unicode.Scalar? { Unicode.Scalar(units[index]) }
+
         var index = caret - 1
-        while index >= 0, length < maxTokenLength {
-            guard let scalar = Unicode.Scalar(units[index]),
-                  !CharacterSet.whitespacesAndNewlines.contains(scalar)
-            else { break }
-            length += 1
+
+        // The caret usually sits just after the space that finished the word,
+        // so spaces can't end the search — they're stepped over and taken into
+        // the selection. Keeping them in it is what holds the caret still:
+        // a space converts to itself, so the pasted text is the same length and
+        // ends in the same place. Newlines are not crossed; the token on the
+        // line above is not what the user meant to convert.
+        var trailingSpaces = 0
+        while index >= 0, trailingSpaces < maxTokenLength,
+              let s = scalar(at: index), CharacterSet.whitespaces.contains(s) {
+            trailingSpaces += 1
             index -= 1
         }
-        return length
+
+        var token = 0
+        while index >= 0, token < maxTokenLength,
+              let s = scalar(at: index), !CharacterSet.whitespacesAndNewlines.contains(s) {
+            token += 1
+            index -= 1
+        }
+
+        return token > 0 ? token + trailingSpaces : 0
     }
 
     // MARK: - Steps 2 and 3: read, convert, paste

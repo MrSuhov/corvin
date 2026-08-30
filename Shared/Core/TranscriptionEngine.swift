@@ -36,7 +36,13 @@ class TranscriptionEngine: ObservableObject {
             var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
             params.n_threads = 1
             params.print_progress = false
-            self.whisperLock.lock()
+            // Skip the tick rather than queue behind a real transcription —
+            // the pages are hot anyway while one is running, and waiting here
+            // only lines this up to clobber ctx the moment the lock is free.
+            guard self.whisperLock.try() else {
+                flog("keepAlive: skipped, transcription in progress")
+                return
+            }
             samples.withUnsafeBufferPointer { ptr in
                 _ = whisper_full(ctx, params, ptr.baseAddress, Int32(samples.count))
             }
@@ -160,13 +166,19 @@ class TranscriptionEngine: ObservableObject {
                     }
                     params.abort_callback_user_data = abortPtr
 
+                    // The lock has to span the result readout, not just the run:
+                    // the segment texts live inside ctx and the next whisper_full
+                    // on the same ctx frees them. Reading them unlocked let the
+                    // keepAlive tick overwrite the buffer mid-copy, which handed
+                    // String(cString:) bytes that changed after it had validated
+                    // them — an ill-formed String that later trapped in AppKit.
                     self.whisperLock.lock()
                     let result = chunk.withUnsafeBufferPointer { ptr in
                         whisper_full(ctx, params, ptr.baseAddress, Int32(chunk.count))
                     }
-                    self.whisperLock.unlock()
 
                     if result != 0 {
+                        self.whisperLock.unlock()
                         flog("whisper_full failed on chunk \(idx)")
                         continue
                     }
@@ -182,12 +194,16 @@ class TranscriptionEngine: ObservableObject {
                         let langId = whisper_full_lang_id(ctx)
                         detectedLang = String(cString: whisper_lang_str(langId))
                     }
+                    self.whisperLock.unlock()
                     flog("chunk \(idx+1) done, total text length: \(fullText.count)")
                 }
 
                 DispatchQueue.main.async { self.chunkProgress = (0, 0) }
 
-                let text = fullText
+                // Belt and braces: re-decode before publishing. A String that
+                // claims to hold valid UTF-8 but doesn't will trap the moment
+                // AppKit walks it as UTF-16 — better a row of ￼ than a SIGTRAP.
+                let text = String(decoding: Array(fullText.utf8), as: UTF8.self)
                 flog("all chunks done, raw text='\(text.prefix(200))', lang=\(detectedLang)")
 
                 var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)

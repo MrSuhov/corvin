@@ -7,62 +7,30 @@ struct TestTranscriptionView: View {
     @EnvironmentObject var sessionManager: SessionManager
     @EnvironmentObject var modelManager: ModelManager
     @EnvironmentObject var transcriptionEngine: TranscriptionEngine
+    @EnvironmentObject var fileQueue: FileTranscriptionQueue
 
     @State private var resultText = ""
     @State private var isRecording = false
     @State private var isTranscribing = false
     @State private var errorMessage: String?
-    @State private var importedFileName: String?
     @State private var transcribeStartTime: Date?
+    @State private var isDropTargeted = false
 
     // Stored as @State to survive SwiftUI view recreation during re-renders
     @State private var audioCaptureService = AudioCaptureService()
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                // PTT section
-                VStack(spacing: 12) {
-                    Text("test.recording.title".localized)
-                        .font(.headline)
-
-                    pttButton
-
-                    stateLabel
-                }
+            VStack(alignment: .leading, spacing: 14) {
+                pttSection
 
                 Divider()
 
-                // File import section
-                VStack(spacing: 12) {
-                    Text("test.file.title".localized)
-                        .font(.headline)
+                fileSection
 
-                    Text("test.file.formats".localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    HStack(spacing: 12) {
-                        Button {
-                            importFile()
-                        } label: {
-                            Label("test.file.choose".localized, systemImage: "doc.badge.plus")
-                        }
-                        .modifier(BorderedButtonCompat())
-                        .disabled(isRecording || isTranscribing)
-
-                        if let fileName = importedFileName {
-                            Text(fileName)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                }
-
-                // Result display
-                if !resultText.isEmpty {
-                    resultSection
+                if !fileQueue.jobs.isEmpty {
+                    Divider()
+                    queueSection
                 }
 
                 if let error = errorMessage {
@@ -72,88 +40,271 @@ struct TestTranscriptionView: View {
                 }
             }
             .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .transcribeFileRequest)) { notification in
-            if let url = notification.userInfo?["url"] as? URL {
-                transcribeURL(url)
-            }
-        }
-    }
-
-    private var pttButton: some View {
-        PTTCircleButton(
-            isRecording: isRecording,
-            onMouseDown: { startRecording() },
-            onMouseUp: { stopAndTranscribe() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The whole pane is the drop target, not a separate well.
+        .contentShape(Rectangle())
+        .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .padding(2)
+                .opacity(isDropTargeted ? 1 : 0)
+                .allowsHitTesting(false)
         )
-        .frame(width: 80, height: 80)
     }
 
-    private var resultSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("test.result".localized)
-                    .font(.headline)
-                Spacer()
-                Button("test.copy".localized) {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(resultText, forType: .string)
-                }
-                .modifier(BorderedButtonCompat())
-            }
+    // MARK: - Push to talk
 
-            if #available(macOS 12.0, *) {
-                Text(resultText)
-                    .textSelection(.enabled)
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.controlBackgroundColor))
-                    .cornerRadius(8)
-            } else {
-                Text(resultText)
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.controlBackgroundColor))
-                    .cornerRadius(8)
+    private var pttSection: some View {
+        HStack(spacing: 12) {
+            PTTCircleButton(
+                isRecording: isRecording,
+                onMouseDown: { startRecording() },
+                onMouseUp: { stopAndTranscribe() }
+            )
+            .frame(width: 56, height: 56)
+            .opacity(fileQueue.isRunning ? 0.4 : 1)
+            .allowsHitTesting(!fileQueue.isRunning)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("test.recording.title".localized)
+                    .font(.headline)
+                stateLabel
             }
+            Spacer()
         }
     }
 
     @ViewBuilder
     private var stateLabel: some View {
         if isTranscribing {
-            VStack(spacing: 6) {
-                if transcriptionEngine.chunkProgress.total > 1 {
-                    let cur = transcriptionEngine.chunkProgress.current
-                    let tot = transcriptionEngine.chunkProgress.total
-                    ProgressView(value: Double(cur), total: Double(tot))
-                        .frame(width: 200)
-                    Text("Чанк \(cur) из \(tot)")
+            VStack(alignment: .leading, spacing: 4) {
+                let progress = transcriptionEngine.chunkProgress
+                if progress.total > 1 {
+                    ProgressView(value: Double(progress.current), total: Double(progress.total))
+                        .frame(width: 160)
+                    Text("test.status.chunk".localized(with: progress.current, progress.total))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else {
                     ProgressView("status.transcribing".localized)
                 }
                 if let start = transcribeStartTime {
-                    if #available(macOS 13.0, *) {
-                        TimelineView(.periodic(from: start, by: 1)) { context in
-                            let elapsed = Int(context.date.timeIntervalSince(start))
-                            Text("\(elapsed) сек.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
+                    elapsedLabel(since: start)
                 }
             }
         } else if isRecording {
             Text("test.recording.holdRelease".localized)
+                .font(.caption)
                 .foregroundColor(.red)
+        } else if !resultText.isEmpty {
+            HStack(spacing: 8) {
+                Text(resultText)
+                    .font(.caption)
+                    .lineLimit(2)
+                Button("test.copy".localized) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(resultText, forType: .string)
+                }
+                .modifier(BorderedButtonCompat())
+            }
         } else {
             Text("test.recording.hold".localized)
+                .font(.caption)
                 .foregroundColor(.secondary)
         }
     }
+
+    @ViewBuilder
+    private func elapsedLabel(since start: Date) -> some View {
+        if #available(macOS 13.0, *) {
+            TimelineView(.periodic(from: start, by: 1)) { context in
+                Text("test.elapsed".localized(with: Int(context.date.timeIntervalSince(start))))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
+            }
+        }
+    }
+
+    // MARK: - File import
+
+    private var fileSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("test.file.title".localized)
+                .font(.headline)
+
+            HStack(spacing: 6) {
+                Text("test.output.label".localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(outputDirectoryLabel)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Button("test.output.choose".localized) { fileQueue.chooseOutputDirectory() }
+                    .modifier(BorderedButtonCompat())
+                    .controlSize(.small)
+                if fileQueue.outputDirectory != nil {
+                    Button {
+                        fileQueue.clearOutputDirectory()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .help("test.output.reset".localized)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    importFiles()
+                } label: {
+                    Label("test.file.choose".localized, systemImage: "doc.badge.plus")
+                }
+                .modifier(BorderedButtonCompat())
+
+                Text("test.file.dropHint".localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Text("test.file.formats".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            if !fileQueue.blockedDirectories.isEmpty {
+                blockedBanner
+            }
+        }
+    }
+
+    private var outputDirectoryLabel: String {
+        guard let directory = fileQueue.outputDirectory else {
+            return "test.output.nextToAudio".localized
+        }
+        return (directory.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    private var blockedBanner: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+            Text("test.perm.banner".localized(with: fileQueue.blockedDirectories.count))
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Queue
+
+    private var queueSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("test.queue.summary".localized(with: fileQueue.finishedCount, fileQueue.jobs.count))
+                    .font(.headline)
+                Spacer()
+                if fileQueue.isRunning {
+                    Button("test.queue.stop".localized) { fileQueue.requestStop() }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                        .disabled(fileQueue.stopRequested)
+                }
+                if !fileQueue.unsavedJobs.isEmpty {
+                    Button("test.queue.saveAll".localized) { fileQueue.saveAllUnsaved() }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                }
+                if fileQueue.hasFinishedJobs {
+                    Button("test.queue.clear".localized) { fileQueue.clearFinished() }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                }
+            }
+
+            if fileQueue.stopRequested {
+                Text("test.queue.stopping".localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            LazyVStack(alignment: .leading, spacing: 6) {
+                ForEach(fileQueue.jobs) { job in
+                    JobRow(job: job,
+                           onReveal: { reveal(job) },
+                           onSaveAs: { fileQueue.saveAs(jobID: job.id) })
+                }
+            }
+        }
+    }
+
+    private func reveal(_ job: FileTranscriptionQueue.Job) {
+        guard let url = job.outputURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    // MARK: - Drag and drop
+
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        let identifier = UTType.fileURL.identifier
+        let group = DispatchGroup()
+        let lock = NSLock()
+        // Keyed by index so the queue ends up in the order they were dragged,
+        // not in whatever order the async loads happen to finish.
+        var collected: [Int: URL] = [:]
+
+        for (index, provider) in providers.enumerated() {
+            guard provider.hasItemConformingToTypeIdentifier(identifier) else { continue }
+            group.enter()
+            provider.loadItem(forTypeIdentifier: identifier, options: nil) { item, _ in
+                defer { group.leave() }
+                // Finder vends any of these three shapes depending on the OS
+                // version; `loadObject(ofClass: URL.self)` is not dependable
+                // before macOS 13.
+                var url: URL?
+                if let data = item as? Data {
+                    url = URL(dataRepresentation: data, relativeTo: nil)
+                } else if let nsurl = item as? NSURL {
+                    url = nsurl as URL
+                } else if let direct = item as? URL {
+                    url = direct
+                }
+                guard let url else { return }
+                lock.lock()
+                collected[index] = url
+                lock.unlock()
+            }
+        }
+
+        group.notify(queue: .main) {
+            let urls = collected.sorted { $0.key < $1.key }.map { $0.value }
+            guard !urls.isEmpty else { return }
+            // LSUIElement app: the permission alert and open panels need us
+            // frontmost or they open behind whatever the user dragged from.
+            NSApp.activate(ignoringOtherApps: true)
+            fileQueue.enqueue(urls: urls)
+        }
+
+        // Claim the drop now; the loads finish on their own.
+        return true
+    }
+
+    private func importFiles() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.audio]
+            + AudioFileDecoder.supportedExtensions.compactMap { UTType(filenameExtension: $0) }
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.message = "test.file.chooseMessage".localized
+
+        guard panel.runModal() == .OK else { return }
+        fileQueue.enqueue(urls: panel.urls)
+    }
+
+    // MARK: - Push-to-talk plumbing
 
     private func startRecording() {
         guard !isRecording, !isTranscribing else { return }
@@ -168,74 +319,9 @@ struct TestTranscriptionView: View {
         }
 
         errorMessage = nil
+        resultText = ""
         isRecording = true
         audioCaptureService.startCapture()
-    }
-
-    private func importFile() {
-        guard !isRecording, !isTranscribing else { return }
-
-        // Prevent concurrent whisper_full() calls with the main hotkey flow
-        if case .recording = sessionManager.state { return }
-        if case .transcribing = sessionManager.state { return }
-
-        guard modelManager.activeModel != nil else {
-            errorMessage = "test.noModel".localized
-            return
-        }
-
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.audio] + [UTType(filenameExtension: "ogg"), UTType(filenameExtension: "opus"),
-                                        UTType(filenameExtension: "webm"), UTType(filenameExtension: "weba")].compactMap { $0 }
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.message = "test.file.chooseMessage".localized
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        transcribeURL(url)
-    }
-
-    private func transcribeURL(_ url: URL) {
-        guard !isRecording, !isTranscribing else { return }
-
-        // Prevent concurrent whisper_full() calls with the main hotkey flow
-        if case .recording = sessionManager.state { return }
-        if case .transcribing = sessionManager.state { return }
-
-        guard modelManager.activeModel != nil else {
-            errorMessage = "test.noModel".localized
-            return
-        }
-
-        importedFileName = url.lastPathComponent
-        errorMessage = nil
-        resultText = ""
-        isTranscribing = true
-        transcribeStartTime = Date()
-
-        flog("TestView: transcribeURL start: \(url.lastPathComponent)")
-        Task {
-            do {
-                flog("TestView: decoding file...")
-                let pcmData = try AudioFileDecoder.decode(url: url)
-                flog("TestView: decoded \(pcmData.count) bytes, starting whisper...")
-                let result = try await transcriptionEngine.transcribe(audioData: pcmData)
-                flog("TestView: transcription done: '\(result.text.prefix(80))'")
-                await MainActor.run {
-                    resultText = result.text
-                    isTranscribing = false
-                    transcribeStartTime = nil
-                }
-            } catch {
-                flog("TestView: ERROR \(error)")
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isTranscribing = false
-                    transcribeStartTime = nil
-                }
-            }
-        }
     }
 
     private func stopAndTranscribe() {
@@ -263,6 +349,107 @@ struct TestTranscriptionView: View {
                     transcribeStartTime = nil
                 }
             }
+        }
+    }
+}
+
+// MARK: - Queue row
+
+private struct JobRow: View {
+    let job: FileTranscriptionQueue.Job
+    let onReveal: () -> Void
+    let onSaveAs: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: iconName)
+                .foregroundColor(iconColor)
+                .frame(width: 14)
+
+            Text(job.url.lastPathComponent)
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(minWidth: 90, alignment: .leading)
+                .layoutPriority(1)
+
+            detail
+
+            Spacer(minLength: 0)
+
+            if job.outputURL != nil {
+                Button(action: onReveal) {
+                    Image(systemName: "arrow.up.forward.square")
+                }
+                .buttonStyle(.plain)
+                .help("test.queue.reveal".localized)
+            } else if job.status == .failed, job.text?.isEmpty == false {
+                Button("test.queue.saveAs".localized, action: onSaveAs)
+                    .modifier(BorderedButtonCompat())
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch job.status {
+        case .pending:
+            caption("test.status.pending".localized)
+        case .waitingForMic:
+            caption("test.status.waitingMic".localized)
+        case .decoding:
+            caption("test.status.decoding".localized)
+        case .transcribing:
+            HStack(spacing: 6) {
+                if job.progress.total > 1 {
+                    ProgressView(value: Double(job.progress.current), total: Double(job.progress.total))
+                        .frame(width: 60)
+                    caption("test.status.chunk".localized(with: job.progress.current, job.progress.total))
+                } else {
+                    caption("status.transcribing".localized)
+                }
+            }
+        case .saved:
+            caption(job.outputURL?.lastPathComponent ?? "")
+        case .savedToFallback:
+            caption("test.status.fallback".localized)
+        case .empty:
+            caption("test.status.empty".localized)
+        case .failed:
+            Text(job.error ?? "test.status.failed".localized)
+                .font(.caption)
+                .foregroundColor(.red)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+    }
+
+    private var iconName: String {
+        switch job.status {
+        case .pending, .waitingForMic: return "clock"
+        case .decoding, .transcribing: return "waveform"
+        case .saved: return "checkmark.circle.fill"
+        case .savedToFallback: return "exclamationmark.circle.fill"
+        case .empty: return "minus.circle"
+        case .failed: return "xmark.circle.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch job.status {
+        case .saved: return .green
+        case .savedToFallback: return .orange
+        case .failed: return .red
+        default: return .secondary
         }
     }
 }
@@ -320,7 +507,7 @@ class PTTCircleNSView: NSView {
         // Icon
         let iconName = isRecording ? "stop.fill" : "mic.fill"
         if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
+            let config = NSImage.SymbolConfiguration(pointSize: 22, weight: .regular)
             let configured = image.withSymbolConfiguration(config) ?? image
             let imageSize = configured.size
             let imageRect = NSRect(

@@ -4,18 +4,33 @@ import COpus
 
 enum AudioFileDecoder {
 
+    /// Extensions `decode(url:)` can actually handle. Single source of truth for
+    /// the open panel's filter, the drag-and-drop filter, and the formats blurb —
+    /// these used to be three hand-maintained lists that disagreed with each other
+    /// and with the decoder.
+    static let supportedExtensions: Set<String> = [
+        // Opus containers (Telegram voice messages)
+        "ogg", "opus", "oga",
+        // Matroska / WebM
+        "webm", "weba", "mkv", "mka",
+        // Everything AVFoundation handles
+        "wav", "m4a", "m4b", "mp4", "mp3", "aiff", "aif", "aifc", "flac", "caf",
+    ]
+
     enum DecoderError: LocalizedError {
         case cannotOpenFile(String)
         case conversionFailed(String)
         case unsupportedCodec(String)
         case emptyResult
+        case fileTooLarge(String)
 
         var errorDescription: String? {
             switch self {
-            case .cannotOpenFile(let path): return "Не удалось открыть файл: \(path)"
-            case .conversionFailed(let reason): return "Ошибка конвертации: \(reason)"
-            case .unsupportedCodec(let codec): return "Неподдерживаемый аудиокодек: \(codec)"
-            case .emptyResult: return "Файл не содержит аудиоданных"
+            case .cannotOpenFile(let path): return "decoder.cannotOpen".localized(with: path)
+            case .conversionFailed(let reason): return "decoder.conversionFailed".localized(with: reason)
+            case .unsupportedCodec(let codec): return "decoder.unsupportedCodec".localized(with: codec)
+            case .emptyResult: return "decoder.emptyResult".localized
+            case .fileTooLarge(let name): return "decoder.fileTooLarge".localized(with: name)
             }
         }
     }
@@ -267,7 +282,10 @@ enum AudioFileDecoder {
 
     /// Read the first bytes and detect the real container format by magic bytes.
     /// Returns a file extension AVAudioFile understands, or nil if unknown.
-    private static func sniffFormat(url: URL) -> String? {
+    /// Best-effort container detection from magic bytes. Internal because the
+    /// drop handler uses it as a second chance for files whose extension is
+    /// missing or lying — the same reason this function exists at all.
+    static func sniffFormat(url: URL) -> String? {
         guard let fh = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? fh.close() }
         guard let data = try? fh.read(upToCount: 16), data.count >= 4 else { return nil }

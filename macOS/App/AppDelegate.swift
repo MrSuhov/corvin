@@ -1,10 +1,6 @@
 import SwiftUI
 import Combine
 
-extension Notification.Name {
-    static let transcribeFileRequest = Notification.Name("transcribeFileRequest")
-}
-
 class AppDelegate: NSObject, NSApplicationDelegate {
     let sessionManager = SessionManager()
     let modelManager = ModelManager()
@@ -15,6 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var accessibilityService: AccessibilityService!
     private var layoutSwitchService: LayoutSwitchService!
     private(set) var transcriptionEngine: TranscriptionEngine!
+    private(set) var fileQueue: FileTranscriptionQueue!
 
     private var statusBarController: StatusBarController!
     private var floatingIndicator: FloatingIndicatorController!
@@ -25,6 +22,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let settingsTabSelection = SettingsTabSelection()
     private var historyWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
+
+    /// AppKit delivers the open-documents Apple Event from inside
+    /// `finishLaunching`, i.e. *before* `applicationDidFinishLaunching` has
+    /// built any of the services below. Launching Corvin by double-clicking an
+    /// audio file therefore has to park the URLs until we are ready for them.
+    private var didFinishLaunching = false
+    private var pendingOpenURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         flog("=== applicationDidFinishLaunching ===")
@@ -53,6 +57,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         layoutSwitchService = LayoutSwitchService(accessibility: accessibilityService)
         audioCaptureService = AudioCaptureService()
         transcriptionEngine = TranscriptionEngine(modelManager: modelManager)
+        // App-lifetime owner: the settings pane that drives this queue is torn
+        // down whenever the user switches tabs or the interface language, so a
+        // view-owned queue would die mid-batch.
+        fileQueue = FileTranscriptionQueue(engine: transcriptionEngine,
+                                          sessionManager: sessionManager,
+                                          modelManager: modelManager)
         hotkeyService = HotkeyService()
 
         statusBarController = StatusBarController(
@@ -103,6 +113,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.transcriptionEngine.startKeepAlive()
                 }
             }
+        }
+
+        didFinishLaunching = true
+        if !pendingOpenURLs.isEmpty {
+            let urls = pendingOpenURLs
+            pendingOpenURLs = []
+            openFiles(urls)
         }
     }
 
@@ -249,14 +266,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-        flog("application(open:) \(url.lastPathComponent)")
+        guard !urls.isEmpty else { return }
+        flog("application(open:) \(urls.count) file(s), launched=\(didFinishLaunching)")
+        guard didFinishLaunching else {
+            pendingOpenURLs.append(contentsOf: urls)
+            return
+        }
+        openFiles(urls)
+    }
+
+    @MainActor
+    private func openFiles(_ urls: [URL]) {
         showSettingsWindow(tab: .transcription)
-        NotificationCenter.default.post(
-            name: .transcribeFileRequest,
-            object: nil,
-            userInfo: ["url": url]
-        )
+        // Straight onto the queue rather than through a notification the pane
+        // has to already be listening for — that ordering only ever worked
+        // because NSHostingView happens to build synchronously.
+        fileQueue.enqueue(urls: urls)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -315,6 +340,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .environmentObject(modelManager)
             .environmentObject(historyStore)
             .environmentObject(transcriptionEngine as TranscriptionEngine)
+            .environmentObject(fileQueue as FileTranscriptionQueue)
 
         let window = NSWindow(
             // Match SettingsView's fixed SwiftUI frame exactly so NSHostingView

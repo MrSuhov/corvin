@@ -6,18 +6,37 @@ private let engineLogger = Logger(subsystem: "com.corvin.engine", category: "tra
 
 // TranscriptionResult is defined in Shared/Networking/TranscriptionModels.swift
 
+/// Progress through the chunk list of a single transcription.
+/// A struct rather than a tuple so it is `Equatable` and SwiftUI can diff it.
+struct ChunkProgress: Equatable {
+    var current: Int = 0
+    var total: Int = 0
+
+    static let none = ChunkProgress()
+}
+
 class TranscriptionEngine: ObservableObject {
     private let modelManager: ModelManager
     private var whisperContext: OpaquePointer?
     private var loadedModelId: String?
     private let whisperLock = NSLock()
-    private var shouldAbort = false
     private var keepAliveTimer: DispatchSourceTimer?
     /// Interval between keep-alive pings that prevent macOS from paging model out of RAM
     private let keepAliveInterval: TimeInterval = 120 // 2 minutes
 
-    /// Chunk progress: (current chunk 1-based, total chunks)
-    @Published var chunkProgress: (current: Int, total: Int) = (0, 0)
+    /// Bumped every time the whisper context is freed. Replaces the old
+    /// `shouldAbort` bool, which `unloadModel()` reset to `false` on its way
+    /// out: a chunk loop that had been signalled to stop would find the flag
+    /// clear again and call `whisper_full` on the pointer that had just been
+    /// freed. A counter is never "un-signalled", so a run that started on
+    /// generation N stays invalid forever once the context moves to N+1.
+    private var modelGeneration: Int = 0
+    private let generationLock = NSLock()
+
+    /// Chunk progress of whatever transcription ran most recently. Shared
+    /// across callers by nature — per-call progress goes through the
+    /// `onProgress` closure of `transcribe(audioData:onProgress:shouldYield:)`.
+    @Published var chunkProgress: ChunkProgress = .none
 
     init(modelManager: ModelManager) {
         self.modelManager = modelManager
@@ -30,7 +49,7 @@ class TranscriptionEngine: ObservableObject {
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .background))
         timer.schedule(deadline: .now() + keepAliveInterval, repeating: keepAliveInterval)
         timer.setEventHandler { [weak self] in
-            guard let self = self, let ctx = self.whisperContext else { return }
+            guard let self = self else { return }
             // Tiny 0.1s silent buffer — just enough to touch model memory pages
             let samples = [Float](repeating: 0, count: 1600)
             var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
@@ -43,10 +62,12 @@ class TranscriptionEngine: ObservableObject {
                 flog("keepAlive: skipped, transcription in progress")
                 return
             }
+            defer { self.whisperLock.unlock() }
+            // Read the context under the lock, never from outside it.
+            guard let ctx = self.whisperContext else { return }
             samples.withUnsafeBufferPointer { ptr in
                 _ = whisper_full(ctx, params, ptr.baseAddress, Int32(samples.count))
             }
-            self.whisperLock.unlock()
             flog("keepAlive: model memory touched")
         }
         timer.resume()
@@ -89,19 +110,19 @@ class TranscriptionEngine: ObservableObject {
         flog("model loaded successfully")
     }
 
-    func transcribe(audioData: Data) async throws -> TranscriptionResult {
+    /// - Parameters:
+    ///   - onProgress: per-call chunk progress `(current, total)`, called off
+    ///     the main thread. Use this instead of `chunkProgress` when more than
+    ///     one transcription can be in flight (the batch queue plus the hotkey
+    ///     flow) — the published property belongs to whoever ran last.
+    ///   - shouldYield: polled between chunks; while it returns `true` the run
+    ///     parks itself instead of taking the lock. `whisperLock` only spans a
+    ///     single chunk, so without this a live dictation would queue behind a
+    ///     25-second batch chunk before *each* of its own chunks.
+    func transcribe(audioData: Data,
+                    onProgress: ((Int, Int) -> Void)? = nil,
+                    shouldYield: (() -> Bool)? = nil) async throws -> TranscriptionResult {
         engineLogger.info("transcribe called, audioData: \(audioData.count) bytes")
-        // Reload if model changed or not loaded
-        let currentId = modelManager.activeModel?.id
-        if whisperContext == nil || loadedModelId != currentId {
-            engineLogger.info("need to load/reload model (ctx=\(self.whisperContext == nil ? "nil" : "set"), loaded=\(self.loadedModelId ?? "nil"), current=\(currentId ?? "nil"))")
-            unloadModel()
-            try loadModel()
-        }
-
-        guard let ctx = whisperContext else {
-            throw TranscriptionError.noModel
-        }
 
         // Minimum ~0.5s of audio at 16kHz 16-bit mono = 16000 bytes
         if audioData.count < 16000 {
@@ -113,6 +134,18 @@ class TranscriptionEngine: ObservableObject {
         return try await withCheckedThrowingContinuation { continuation in
             var thread: Thread!
             thread = Thread {
+                // Loading happens here rather than in the async prologue: it
+                // takes `whisperLock`, and blocking a cooperative-pool thread
+                // on a lock held for a whole 25-second chunk is exactly what
+                // that pool must never do.
+                let myGeneration: Int
+                do {
+                    myGeneration = try self.prepareContext()
+                } catch {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
                 // Convert Data to [Float] PCM samples
                 var samples = audioData.withUnsafeBytes { buffer -> [Float] in
                     let int16Buffer = buffer.bindMemory(to: Int16.self)
@@ -138,18 +171,28 @@ class TranscriptionEngine: ObservableObject {
                 let chunks = Self.splitAtSilence(samples: samples, maxChunkSize: chunkSize)
                 flog("split into \(chunks.count) chunks (\(String(format: "%.1f", Float(samples.count) / 16000.0))s total)")
 
-                DispatchQueue.main.async { self.chunkProgress = (0, chunks.count) }
+                DispatchQueue.main.async { self.chunkProgress = ChunkProgress(current: 0, total: chunks.count) }
+                onProgress?(0, chunks.count)
+
+                let abortToken = AbortToken(engine: self, generation: myGeneration)
 
                 var fullText = ""
                 var detectedLang = ""
 
                 for (idx, chunk) in chunks.enumerated() {
-                    guard !self.shouldAbort else {
-                        flog("transcription aborted at chunk \(idx)")
+                    // Step aside for the live dictation flow rather than
+                    // interleaving chunk-for-chunk with it.
+                    while shouldYield?() == true, self.currentGeneration() == myGeneration {
+                        Thread.sleep(forTimeInterval: 0.1)
+                    }
+
+                    guard self.currentGeneration() == myGeneration else {
+                        flog("transcription aborted at chunk \(idx): model generation changed")
                         break
                     }
 
-                    DispatchQueue.main.async { self.chunkProgress = (idx + 1, chunks.count) }
+                    DispatchQueue.main.async { self.chunkProgress = ChunkProgress(current: idx + 1, total: chunks.count) }
+                    onProgress?(idx + 1, chunks.count)
                     flog("chunk \(idx+1)/\(chunks.count): \(chunk.count) samples (\(String(format: "%.1f", Float(chunk.count) / 16000.0))s)")
 
                     var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
@@ -158,13 +201,15 @@ class TranscriptionEngine: ObservableObject {
                     params.n_threads = Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 2))
                     params.print_progress = false
 
-                    let abortPtr = Unmanaged.passUnretained(self).toOpaque()
+                    // The token carries the generation this run started on, so
+                    // the callback aborts only for *its own* invalidation and
+                    // not for some unrelated later reload.
                     params.abort_callback = { userData in
                         guard let ptr = userData else { return false }
-                        let engine = Unmanaged<TranscriptionEngine>.fromOpaque(ptr).takeUnretainedValue()
-                        return engine.shouldAbort
+                        let token = Unmanaged<AbortToken>.fromOpaque(ptr).takeUnretainedValue()
+                        return token.engine.currentGeneration() != token.generation
                     }
-                    params.abort_callback_user_data = abortPtr
+                    params.abort_callback_user_data = Unmanaged.passUnretained(abortToken).toOpaque()
 
                     // The lock has to span the result readout, not just the run:
                     // the segment texts live inside ctx and the next whisper_full
@@ -173,8 +218,20 @@ class TranscriptionEngine: ObservableObject {
                     // String(cString:) bytes that changed after it had validated
                     // them — an ill-formed String that later trapped in AppKit.
                     self.whisperLock.lock()
-                    let result = chunk.withUnsafeBufferPointer { ptr in
-                        whisper_full(ctx, params, ptr.baseAddress, Int32(chunk.count))
+
+                    // Re-read the context every chunk instead of capturing it
+                    // once before the loop: between two chunks the model can be
+                    // swapped out from under us and the old pointer freed.
+                    guard let ctx = self.whisperContext, self.currentGeneration() == myGeneration else {
+                        self.whisperLock.unlock()
+                        flog("transcription aborted at chunk \(idx): context released")
+                        break
+                    }
+
+                    let result = withExtendedLifetime(abortToken) {
+                        chunk.withUnsafeBufferPointer { ptr in
+                            whisper_full(ctx, params, ptr.baseAddress, Int32(chunk.count))
+                        }
                     }
 
                     if result != 0 {
@@ -198,7 +255,7 @@ class TranscriptionEngine: ObservableObject {
                     flog("chunk \(idx+1) done, total text length: \(fullText.count)")
                 }
 
-                DispatchQueue.main.async { self.chunkProgress = (0, 0) }
+                DispatchQueue.main.async { self.chunkProgress = .none }
 
                 // Belt and braces: re-decode before publishing. A String that
                 // claims to hold valid UTF-8 but doesn't will trap the moment
@@ -230,17 +287,67 @@ class TranscriptionEngine: ObservableObject {
 
     func unloadModel() {
         stopKeepAlive()
-        // Signal abort to any in-progress whisper_full, then wait for it to finish
-        shouldAbort = true
+        // Bump before taking the lock: an in-flight whisper_full polls the
+        // generation through abort_callback, unwinds, and hands us the lock.
+        bumpGeneration()
         whisperLock.lock()
-        if let ctx = whisperContext {
-            flog("unloading model (loadedModelId=\(loadedModelId ?? "nil"))")
-            whisper_free(ctx)
-            whisperContext = nil
-            loadedModelId = nil
-        }
+        freeContextLocked()
         whisperLock.unlock()
-        shouldAbort = false
+    }
+
+    /// Make sure the context matches the active model and return the
+    /// generation this run is entitled to use.
+    ///
+    /// All of it under the lock: unlocked, two callers could both decide the
+    /// model needed swapping and the loser would free the context the winner
+    /// was already running on.
+    private func prepareContext() throws -> Int {
+        whisperLock.lock()
+        defer { whisperLock.unlock() }
+
+        let currentId = modelManager.activeModel?.id
+        if whisperContext == nil || loadedModelId != currentId {
+            engineLogger.info("need to load/reload model (ctx=\(self.whisperContext == nil ? "nil" : "set"), loaded=\(self.loadedModelId ?? "nil"), current=\(currentId ?? "nil"))")
+            bumpGeneration()
+            freeContextLocked()
+            try loadModel()
+        }
+        guard whisperContext != nil else { throw TranscriptionError.noModel }
+        return currentGeneration()
+    }
+
+    private func currentGeneration() -> Int {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        return modelGeneration
+    }
+
+    /// Invalidate every transcription currently running on this context.
+    private func bumpGeneration() {
+        generationLock.lock()
+        modelGeneration &+= 1
+        generationLock.unlock()
+    }
+
+    /// Free the whisper context. Caller must hold `whisperLock` and must have
+    /// bumped the generation first, or an in-flight run will keep using it.
+    private func freeContextLocked() {
+        guard let ctx = whisperContext else { return }
+        flog("unloading model (loadedModelId=\(loadedModelId ?? "nil"))")
+        whisper_free(ctx)
+        whisperContext = nil
+        loadedModelId = nil
+    }
+
+    /// Ties an `abort_callback` to the generation its run started on.
+    /// A C function pointer cannot capture, so the pair travels as user data.
+    private final class AbortToken {
+        let engine: TranscriptionEngine
+        let generation: Int
+        init(engine: TranscriptionEngine, generation: Int) {
+            self.engine = engine
+            self.generation = generation
+        }
     }
 
     /// Ensure model is loaded, reload if needed (e.g. after memory warning)
@@ -254,20 +361,20 @@ class TranscriptionEngine: ObservableObject {
 
     /// Preload model + warm up Metal shaders with a tiny silent transcription
     func warmup() {
-        if whisperContext == nil {
-            try? loadModel()
-        }
-        guard let ctx = whisperContext else { return }
         // 1 second of silence at 16kHz
         let samples = [Float](repeating: 0, count: 16000)
         var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
         params.n_threads = Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 1))
         params.print_progress = false
         whisperLock.lock()
+        defer { whisperLock.unlock() }
+        if whisperContext == nil {
+            try? loadModel()
+        }
+        guard let ctx = whisperContext else { return }
         samples.withUnsafeBufferPointer { ptr in
             _ = whisper_full(ctx, params, ptr.baseAddress, Int32(samples.count))
         }
-        whisperLock.unlock()
     }
 
     /// Split audio samples into chunks at silence boundaries.
@@ -327,9 +434,9 @@ class TranscriptionEngine: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .noModel: return "Модель не загружена"
-            case .modelLoadFailed: return "Не удалось загрузить модель"
-            case .transcriptionFailed: return "Ошибка транскрибации"
+            case .noModel: return "engine.noModel".localized
+            case .modelLoadFailed: return "engine.modelLoadFailed".localized
+            case .transcriptionFailed: return "engine.transcriptionFailed".localized
             }
         }
     }

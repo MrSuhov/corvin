@@ -117,23 +117,6 @@ PY
 )
     [ -z "$GRP" ] && { echo "  ERROR: app group container not found"; exit 1; }
 
-    # The keyboard extension is a separate bundle with preferences of its own,
-    # and KeyboardKit remembers there which layout was last used. Nothing in the
-    # app group overrides that, so without seeding it the English and Spanish
-    # captures come out showing a Cyrillic keyboard.
-    KBPREFS=$(python3 - "$UDID" "$BUNDLE_ID.keyboard" <<'KBPY'
-import plistlib, sys, pathlib
-root = pathlib.Path.home()/"Library/Developer/CoreSimulator/Devices"/sys.argv[1]/"data/Containers/Data/PluginKitPlugin"
-for d in sorted(root.iterdir()) if root.exists() else []:
-    meta = d/".com.apple.mobile_container_manager.metadata.plist"
-    if meta.exists():
-        with open(meta, "rb") as f:
-            if plistlib.load(f).get("MCMMetadataIdentifier") == sys.argv[2]:
-                print(d/"Library/Preferences"/(sys.argv[2] + ".plist")); break
-KBPY
-)
-    [ -z "$KBPREFS" ] && echo "  warning: keyboard extension container not found — its layout will be whatever it last used"
-
   # UILANG, not LANG: that name is already an exported environment variable,
   # and reassigning it here would hand every child process an invalid locale.
   for UILANG in $LANGS; do
@@ -168,14 +151,37 @@ KBPY
 
     # Corvin's own layout: the set offered behind the language key, and the one
     # currently showing.
+    #
+    # The extension is a separate bundle with preferences of its own, and
+    # KeyboardKit remembers there which layout was last used. Nothing in the app
+    # group overrides that, so without seeding it the English and Spanish
+    # captures come out showing a Cyrillic keyboard. Reinstalling leaves the old
+    # container behind next to the live one, and there is no telling from the
+    # outside which is which, so every container the extension owns is seeded.
     /usr/libexec/PlistBuddy -c "Add :keyboardLanguages string $(kb_languages "$UILANG")" "$PREFS" 2>/dev/null \
         || /usr/libexec/PlistBuddy -c "Set :keyboardLanguages $(kb_languages "$UILANG")" "$PREFS"
-    if [ -n "$KBPREFS" ]; then
-        mkdir -p "$(dirname "$KBPREFS")"
-        KBKEY="com.keyboardkit.settings.keyboard.localeIdentifier"
-        /usr/libexec/PlistBuddy -c "Add :$KBKEY string $(sys_locale "$UILANG")" "$KBPREFS" 2>/dev/null \
-            || /usr/libexec/PlistBuddy -c "Set :$KBKEY $(sys_locale "$UILANG")" "$KBPREFS"
-    fi
+    KBKEY="com.keyboardkit.settings.keyboard.localeIdentifier"
+    KBSEEDED=0
+    while read -r kbprefs; do
+        [ -z "$kbprefs" ] && continue
+        mkdir -p "$(dirname "$kbprefs")"
+        /usr/libexec/PlistBuddy -c "Add :$KBKEY string $(sys_locale "$UILANG")" "$kbprefs" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Set :$KBKEY $(sys_locale "$UILANG")" "$kbprefs"
+        KBSEEDED=$((KBSEEDED + 1))
+    done <<EOF
+$(python3 - "$UDID" "$BUNDLE_ID.keyboard" <<'KBPY'
+import plistlib, sys, pathlib
+root = pathlib.Path.home()/"Library/Developer/CoreSimulator/Devices"/sys.argv[1]/"data/Containers/Data/PluginKitPlugin"
+for d in sorted(root.iterdir()) if root.exists() else []:
+    meta = d/".com.apple.mobile_container_manager.metadata.plist"
+    if meta.exists():
+        with open(meta, "rb") as f:
+            if plistlib.load(f).get("MCMMetadataIdentifier") == sys.argv[2]:
+                print(d/"Library/Preferences"/(sys.argv[2] + ".plist"))
+KBPY
+)
+EOF
+    [ "$KBSEEDED" = 0 ] && echo "  warning: no keyboard extension container yet — its layout will be whatever it last used"
 
     # The app's own language, read by LocalizationManager.
     /usr/libexec/PlistBuddy -c "Add :appLanguage string $UILANG" "$PREFS" 2>/dev/null \

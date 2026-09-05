@@ -103,7 +103,9 @@ final class AppStoreScreenshotTests: XCTestCase {
         } else {
             let loose = app.buttons[identifier].firstMatch
             guard loose.waitForExistence(timeout: 10) else {
-                XCTFail("tab '\(identifier)' not found — identifiers may have changed")
+                XCTFail("tab '\(identifier)' not found. Tab bar holds: "
+                        + app.tabBars.buttons.allElementsBoundByIndex
+                            .map { "id=\($0.identifier)" }.joined(separator: ", "))
                 return
             }
             loose.tap()

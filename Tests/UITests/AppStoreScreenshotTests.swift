@@ -36,7 +36,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         // per idiom against the bottom-left key of the system keyboard.
         try XCTSkipIf(isPad, "globe offset is calibrated for iPhone only")
 
-        try tap(tab: .history)
+        tap(tab: .history)
         let search = app.searchFields.firstMatch
         guard search.waitForExistence(timeout: 15) else {
             XCTFail("history search field not found")
@@ -65,13 +65,13 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     func testCaptureAppScreens() throws {
-        try tap(tab: .models)
+        tap(tab: .models)
         capture(named: "02-models")
 
-        try tap(tab: .history)
+        tap(tab: .history)
         capture(named: "03-history")
 
-        try tap(tab: .settings)
+        tap(tab: .settings)
         capture(named: "04-settings")
 
         // Opens scrolled to the top, where the setup instructions dominate; the
@@ -81,8 +81,9 @@ final class AppStoreScreenshotTests: XCTestCase {
         // true of the simulator and only of the simulator — do not ship the
         // iPhone copy of this one. It is clean on iPad, where the content fits
         // without scrolling.
-        try tap(tab: .record)
+        tap(tab: .record)
         let scroll = app.scrollViews.firstMatch
+        XCTAssertTrue(scroll.waitForExistence(timeout: 10), "record screen has no scroll view")
         scroll.swipeUp()
         scroll.swipeUp()
         sleep(1)
@@ -101,33 +102,25 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     /// Tabs cannot be found by label — the labels are localized and this test
-    /// runs once per language — and cannot be relied on to be found by
-    /// identifier either: SwiftUI builds the tab bar button itself, and the
-    /// identifier set on the `tabItem`'s `Image` does not always reach it. On
-    /// iOS 26.1 it never does; every button comes back with an empty
-    /// identifier. So: identifier if it is there, position otherwise.
+    /// runs once per language — and cannot be found by identifier either: the
+    /// tab bar button is built by SwiftUI, and the identifier set on the
+    /// `tabItem`'s `Image` does not reach it on iOS 26.1, where every button
+    /// comes back with an empty identifier. Position is what is left, and it is
+    /// stable: it is `MainView`'s declaration order.
     ///
     /// iPhone puts the tabs in a `tabBar`; iPadOS 26 floats them above the
-    /// content, where they are plain buttons rather than tab-bar children.
+    /// content, where they are plain buttons rather than tab-bar children, and
+    /// where the identifier may well survive. Hence the two lookups.
     /// firstMatch throughout: iPadOS exposes each tab twice, and an ambiguous
     /// query refuses to tap.
-    private func tap(tab: Tab) throws {
-        // The one real wait is for the bar; the lookups after it are instant,
-        // which matters because most of them are expected to miss.
+    private func tap(tab: Tab) {
         let bar = app.tabBars.firstMatch
-        let hasBar = bar.waitForExistence(timeout: 15)
-
-        let byIdentifier = [
-            bar.buttons[tab.rawValue].firstMatch,
-            app.buttons[tab.rawValue].firstMatch,
-        ]
-        for candidate in byIdentifier where candidate.exists {
-            candidate.tap()
-            sleep(2)
-            return
-        }
-
-        guard hasBar, bar.buttons.count == Tab.allCases.count else {
+        let button: XCUIElement
+        if bar.waitForExistence(timeout: 15), bar.buttons.count == Tab.allCases.count {
+            button = bar.buttons.element(boundBy: tab.position)
+        } else if app.buttons[tab.rawValue].firstMatch.waitForExistence(timeout: 5) {
+            button = app.buttons[tab.rawValue].firstMatch
+        } else {
             XCTFail("""
                 tab '\(tab.rawValue)' not found.
                 tabBars.buttons: \(describe(app.tabBars.buttons))
@@ -135,8 +128,31 @@ final class AppStoreScreenshotTests: XCTestCase {
                 """)
             return
         }
-        bar.buttons.element(boundBy: tab.position).tap()
-        sleep(2)
+
+        // A tap issued shortly after a screenshot is swallowed every few
+        // attempts: the tab stays where it was, and the next capture then
+        // silently repeats the previous screen — a run produced a
+        // byte-identical 03-history/04-settings pair that way. So the tap is
+        // not assumed to have landed; it is repeated until the tab reports
+        // itself selected.
+        for attempt in 1...4 {
+            button.tap()
+            if selected(button, within: 5) {
+                sleep(1)  // let the content settle before it is photographed
+                return
+            }
+            print("tab '\(tab.rawValue)': tap \(attempt) did not take, retrying")
+        }
+        XCTFail("tab '\(tab.rawValue)' would not select after 4 taps")
+    }
+
+    private func selected(_ element: XCUIElement, within timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.isSelected { return true }
+            usleep(250_000)
+        }
+        return element.isSelected
     }
 
     private func describe(_ query: XCUIElementQuery) -> String {

@@ -128,11 +128,23 @@ Serving is a static `handle_path /corvin/*` block in the Caddyfile on `reactor`
 ```bash
 ./scripts/screenshots-appstore.sh            # both sizes
 ./scripts/screenshots-appstore.sh iphone     # one size
+./scripts/upload-screenshots-asc.py          # every locale into App Store Connect
+./scripts/upload-screenshots-asc.py es-ES    # one locale
 ```
 
-Output lands in `build/screenshots/{iphone,ipad}/` at the exact pixel sizes App
-Store Connect requires — 1320x2868 for the 6.9" iPhone set and 2064x2752 for the
-13" iPad set, which is mandatory while `TARGETED_DEVICE_FAMILY` stays `1,2`.
+Output lands in `build/screenshots/<locale>/<iphone|ipad>/` at the exact pixel
+sizes App Store Connect requires — 1320x2868 for the 6.9" iPhone set and
+2064x2752 for the 13" iPad set, which is mandatory while
+`TARGETED_DEVICE_FAMILY` stays `1,2`. Every listing locale is captured in one
+run: the script seeds the app's own language, the system language and the first
+system keyboard, then reboots the simulator so `cfprefsd` re-reads them. The
+directory names are the App Store locales (`ru`, `en-US`, `es-ES`), which is
+what the upload script matches on.
+
+`upload-screenshots-asc.py` empties a set before filling it — App Store Connect
+appends rather than replaces — and sets the display order explicitly, because
+upload order does not determine it. It needs `source signing.env`. Pass
+`--dry-run` to see what it would touch.
 
 Captures run in the **simulator**, not on a device: the background keep-alive
 puts a Picture-in-Picture window on top of every frame, so device captures come
@@ -140,17 +152,15 @@ out with a stray video overlay. The simulator has no PiP, and no usable Metal
 device either — transcription cannot run there, but every screen renders, which
 is all a screenshot needs.
 
-The script seeds a realistic state before capturing (the `small` model installed
-and active, five history entries from
-`scripts/seed-screenshot-history.py`, onboarding marked done, and Corvin enabled
-as a keyboard) and reboots the simulator so `cfprefsd` re-reads the seeded
-preferences.
+The script seeds a realistic state before capturing: the `small` model installed
+and active, five history entries from `scripts/seed-screenshot-history.py`,
+onboarding marked done, and Corvin enabled as a keyboard.
 
-Check one thing by eye before uploading: `01-keyboard.png` must show Corvin's
-layout — the blue microphone key and the `RU` locale key beside `123`. The
-switch away from the system keyboard is a timed wait, because the extension's
-keys belong to another process and cannot be waited on, so it can occasionally
-catch the system keyboard instead.
+Check one thing by eye before uploading, in every locale: `01-keyboard.png`
+must show Corvin's layout — the blue microphone key, and the locale key beside
+`123`. The switch away from the system keyboard is a timed wait, because the
+extension's keys belong to another process and cannot be waited on, so it can
+occasionally catch the system keyboard instead.
 
 Build the screenshots with `CORVIN_PIP_KEEPALIVE` set the way the submitted
 binary is built. With PiP compiled in, the record screen carries "PiP не

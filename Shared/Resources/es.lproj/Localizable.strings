@@ -284,8 +284,8 @@
 "background.active.audio" = "Activo (audio)";
 "background.active.audioAndPiP" = "Activo (audio + ventana PiP)";
 "background.pipUnavailable" = "La imagen dentro de imagen no está disponible en este dispositivo: el modo en segundo plano se mantiene solo con el canal de audio.";
-"background.explanation.pip" = "Déjalo activado: Corvin recuerda el ajuste y reactiva el modo en segundo plano en cada arranque, incluso después de que otra app ocupe la ventana de imagen dentro de imagen.\\n\\nEl micrófono no está encendido de forma continua: se activa solo mientras mantienes pulsada la tecla del micrófono.";
-"background.explanation" = "Déjalo activado: Corvin recuerda el ajuste y reactiva el modo en segundo plano en cada arranque.\\n\\nEl micrófono no está encendido de forma continua: se activa solo mientras mantienes pulsada la tecla del micrófono.";
+"background.explanation.pip" = "Déjalo activado: Corvin recuerda el ajuste y reactiva el modo en segundo plano en cada arranque, incluso después de que otra app ocupe la ventana de imagen dentro de imagen.\n\nEl micrófono no está encendido de forma continua: se activa solo mientras mantienes pulsada la tecla del micrófono.";
+"background.explanation" = "Déjalo activado: Corvin recuerda el ajuste y reactiva el modo en segundo plano en cada arranque.\n\nEl micrófono no está encendido de forma continua: se activa solo mientras mantienes pulsada la tecla del micrófono.";
 
 // MARK: - iOS Recording and Files
 "record.test.title" = "Prueba de grabación";
@@ -334,7 +334,7 @@
 "common.next" = "Siguiente";
 "onboarding.title" = "Configurar Corvin";
 "onboarding.welcome.title" = "Te damos la bienvenida a Corvin";
-"onboarding.welcome.body" = "Voz a texto directamente desde el teclado.\\nMantén pulsado y habla: el texto aparece al instante.";
+"onboarding.welcome.body" = "Voz a texto directamente desde el teclado.\nMantén pulsado y habla: el texto aparece al instante.";
 "onboarding.mic.title" = "Acceso al micrófono";
 "onboarding.mic.body" = "Corvin graba tu voz para transcribirla. El audio se procesa en tu dispositivo.";
 "onboarding.mic.allow" = "Permitir micrófono";

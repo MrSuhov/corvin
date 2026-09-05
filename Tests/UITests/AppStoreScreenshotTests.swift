@@ -36,7 +36,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         // per idiom against the bottom-left key of the system keyboard.
         try XCTSkipIf(isPad, "globe offset is calibrated for iPhone only")
 
-        try tap(tab: "История")
+        try tap(tab: "tab.history")
         let search = app.searchFields.firstMatch
         guard search.waitForExistence(timeout: 15) else {
             XCTFail("history search field not found")
@@ -65,13 +65,13 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     func testCaptureAppScreens() throws {
-        try tap(tab: "Модели")
+        try tap(tab: "tab.models")
         capture(named: "02-models")
 
-        try tap(tab: "История")
+        try tap(tab: "tab.history")
         capture(named: "03-history")
 
-        try tap(tab: "Настройки")
+        try tap(tab: "tab.settings")
         capture(named: "04-settings")
 
         // Opens scrolled to the top, where the setup instructions dominate; the
@@ -81,7 +81,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         // true of the simulator and only of the simulator — do not ship the
         // iPhone copy of this one. It is clean on iPad, where the content fits
         // without scrolling.
-        try tap(tab: "Запись")
+        try tap(tab: "tab.record")
         let scroll = app.scrollViews.firstMatch
         scroll.swipeUp()
         scroll.swipeUp()
@@ -89,18 +89,21 @@ final class AppStoreScreenshotTests: XCTestCase {
         capture(named: "05-record")
     }
 
+    /// Tabs are found by accessibility identifier, not by their labels: the
+    /// labels are localized now, and this test runs once per language.
+    ///
     /// iPhone puts the tabs in a `tabBar`; iPadOS 26 floats them above the
     /// content, where they are plain buttons rather than tab-bar children.
     /// firstMatch throughout: iPadOS exposes each tab twice, and an ambiguous
     /// query refuses to tap.
-    private func tap(tab: String) throws {
-        let inTabBar = app.tabBars.buttons[tab].firstMatch
+    private func tap(tab identifier: String) throws {
+        let inTabBar = app.tabBars.buttons[identifier].firstMatch
         if inTabBar.waitForExistence(timeout: 10) {
             inTabBar.tap()
         } else {
-            let loose = app.buttons[tab].firstMatch
+            let loose = app.buttons[identifier].firstMatch
             guard loose.waitForExistence(timeout: 10) else {
-                XCTFail("tab '\(tab)' not found — tab labels may have changed")
+                XCTFail("tab '\(identifier)' not found — identifiers may have changed")
                 return
             }
             loose.tap()

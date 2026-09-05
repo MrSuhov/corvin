@@ -48,7 +48,7 @@ SessionState enum drives all UI and service coordination.
 Shared/Core/         — SessionState, SessionManager, TranscriptionEngine, ModelManager, HistoryStore
 Shared/Networking/   — IPC protocol (LocalIPCProtocol), TranscriptionModels
 Shared/UI/           — ProPaywallView (cross-platform)
-Shared/Resources/    — Localizable.strings (en, ru)
+Shared/Resources/    — Localizable.strings/.stringsdict, InfoPlist.strings, AppShortcuts.strings (en, ru, es)
 macOS/App/           — AppDelegate, CorvinApp (@main macOS)
 macOS/Services/      — HotkeyService, AudioCaptureService, AccessibilityService
 macOS/UI/            — StatusBarController, FloatingIndicator, Settings, History, Onboarding, ModelManager views
@@ -83,6 +83,41 @@ whisper.cpp vendored at `vendor/whisper.cpp`. CWhisper SPM target in `Sources/CW
 - `Package.swift` — SPM manifest for macOS command-line build (defaultLocalization: "en")
 - `project.yml` — XcodeGen config generating Corvin.xcodeproj with 7 targets (CWhisper_macOS, CWhisper_iOS, CorvinShared_macOS, CorvinShared_iOS, Corvin, CorviniOS, CorvinKeyboard)
 
+## Localization
+
+Three languages: English, Russian, Spanish. Catalogues live in
+`Shared/Resources/<lang>.lproj/` for both apps, and in
+`CorvinKeyboard/Resources/<lang>.lproj/` for the keyboard extension — an app
+extension is a separate bundle, so inside it `Bundle.main` is the appex and it
+cannot read the host app's strings.
+
+The idiom is `"some.key".localized`, never `Text("literal")`. SwiftUI's
+automatic lookup goes to `Bundle.main` and takes no bundle argument, which is
+incompatible with the in-app language picker: `LocalizedBundle` swaps the bundle
+at runtime and `String.localized` resolves against it. Use `.localized(with:)`
+for anything with a format argument — it passes the chosen locale, without which
+`.stringsdict` plurals do not expand and `%f` uses a POSIX decimal point.
+
+One `.id(localization.currentLanguage)` at the iOS root in
+`iOS/App/SpeachyiOSApp.swift` is the entire refresh mechanism; individual views
+need no awareness of localization. macOS applies the same idea per window.
+
+Text kept in view-model state (`errorMessage` and similar) uses
+`LocalizedMessage`, which stores a key and resolves at render time — a resolved
+string would freeze in the language it was created in.
+
+App Intents, Siri phrases and the system permission dialogs follow the **system**
+language and cannot see the swapped bundle. That is correct for system surfaces.
+
+```bash
+make lint-l10n     # fails on drift; also runs in CI on every push
+make l10n-report   # per-language coverage
+```
+
+The linter checks key parity, per-key format-specifier parity, plural
+completeness, and that no new user-facing literal is hardcoded. Adding a
+language is a new `.lproj` plus one case in `AppLanguage`.
+
 ## Git
 
 Remote `origin` → https://github.com/MrSuhov/corvin (auth via `gh` over HTTPS).
@@ -94,7 +129,7 @@ git push origin main
 ## Key Constraints
 
 - macOS deployment target: 11.0 (Big Sur)
-- iOS deployment target: 15.0
+- iOS deployment target: 16.0
 - macOS: Universal binary arm64 (Metal GPU) + x86_64 (Accelerate BLAS)
 - iOS: arm64 only (Metal GPU)
 - Requires microphone permission on both platforms

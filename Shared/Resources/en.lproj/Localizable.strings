@@ -284,8 +284,8 @@
 "background.active.audio" = "Active (audio)";
 "background.active.audioAndPiP" = "Active (audio + PiP window)";
 "background.pipUnavailable" = "Picture in Picture is unavailable on this device — background mode is held by the audio channel alone.";
-"background.explanation.pip" = "Leave it on — Corvin remembers the setting and re-arms background mode on every launch, including after another app has taken the Picture in Picture window.\\n\\nThe microphone is not on continuously: it is activated only while you hold the microphone key.";
-"background.explanation" = "Leave it on — Corvin remembers the setting and re-arms background mode on every launch.\\n\\nThe microphone is not on continuously: it is activated only while you hold the microphone key.";
+"background.explanation.pip" = "Leave it on — Corvin remembers the setting and re-arms background mode on every launch, including after another app has taken the Picture in Picture window.\n\nThe microphone is not on continuously: it is activated only while you hold the microphone key.";
+"background.explanation" = "Leave it on — Corvin remembers the setting and re-arms background mode on every launch.\n\nThe microphone is not on continuously: it is activated only while you hold the microphone key.";
 
 // MARK: - iOS Recording and Files
 "record.test.title" = "Recording test";
@@ -334,7 +334,7 @@
 "common.next" = "Next";
 "onboarding.title" = "Set up Corvin";
 "onboarding.welcome.title" = "Welcome to Corvin";
-"onboarding.welcome.body" = "Speech to text straight from your keyboard.\\nHold and speak — the text appears at once.";
+"onboarding.welcome.body" = "Speech to text straight from your keyboard.\nHold and speak — the text appears at once.";
 "onboarding.mic.title" = "Microphone access";
 "onboarding.mic.body" = "Corvin records your voice to transcribe it. The audio is processed on your device.";
 "onboarding.mic.allow" = "Allow microphone";

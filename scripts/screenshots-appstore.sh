@@ -41,6 +41,24 @@ declare -a SPECS=(
 
 WANT="${1:-all}"
 
+# App Store listing locales. The bundle only ever has one es.lproj; es-ES is the
+# storefront the Spanish listing uses.
+LANGS="ru en es"
+
+# Plain functions rather than associative arrays: macOS ships bash 3.2, where
+# `declare -A` does not exist and `[ru]=` is parsed as an arithmetic index.
+asc_locale() { case "$1" in ru) echo "ru";; en) echo "en-US";; es) echo "es-ES";; esac; }
+sys_locale() { case "$1" in ru) echo "ru_RU";; en) echo "en_US";; es) echo "es_ES";; esac; }
+# The first system keyboard has to match the language, so the single globe tap in
+# the keyboard test still lands on Corvin.
+sys_keyboard() {
+    case "$1" in
+        ru) echo "ru_RU@sw=Russian;hw=Automatic";;
+        en) echo "en_US@sw=QWERTY;hw=Automatic";;
+        es) echo "es_ES@sw=QWERTY-Spanish;hw=Automatic";;
+    esac
+}
+
 # Booting a simulator, a cold build and two test runs each take minutes. Without
 # timestamps the script looks hung.
 step() { echo "  [$(date +%H:%M:%S)] $*"; }
@@ -97,6 +115,8 @@ PY
 )
     [ -z "$GRP" ] && { echo "  ERROR: app group container not found"; exit 1; }
 
+  for LANG in $LANGS; do
+    step "=== language: $LANG ==="
     step "seeding state"
     if [ -f "$MODEL_SRC" ]; then
         mkdir -p "$GRP/Models"
@@ -123,6 +143,18 @@ PY
     /usr/libexec/PlistBuddy -c "Add :AppleKeyboards:1 string 'com.corvinvoice.ios.keyboard'" "$GLOBALS"
     /usr/libexec/PlistBuddy -c "Add :AppleKeyboardsExpanded integer 1" "$GLOBALS" 2>/dev/null \
         || /usr/libexec/PlistBuddy -c "Set :AppleKeyboardsExpanded 1" "$GLOBALS"
+    /usr/libexec/PlistBuddy -c "Set :AppleKeyboards:0 $(sys_keyboard "$LANG")" "$GLOBALS"
+
+    # The app's own language, read by LocalizationManager.
+    /usr/libexec/PlistBuddy -c "Add :appLanguage string $LANG" "$PREFS" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Set :appLanguage $LANG" "$PREFS"
+    # And the simulator's, because the status bar, the system keyboard behind the
+    # globe tap and every DateFormatter date in the history list follow it.
+    /usr/libexec/PlistBuddy -c "Set :AppleLanguages:0 $LANG" "$GLOBALS" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Add :AppleLanguages array" "$GLOBALS"
+    /usr/libexec/PlistBuddy -c "Set :AppleLanguages:0 $LANG" "$GLOBALS" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Set :AppleLocale $(sys_locale "$LANG")" "$GLOBALS" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Add :AppleLocale string $(sys_locale "$LANG")" "$GLOBALS"
 
     # cfprefsd caches preference domains for the lifetime of the boot, so the
     # edits above are only picked up after a restart.
@@ -139,7 +171,7 @@ PY
         -only-testing:CorvinUITests/AppStoreScreenshotTests \
         -resultBundlePath "$RESULT" > /dev/null
 
-    DEST="$OUT_ROOT/$label"
+    DEST="$OUT_ROOT/$(asc_locale "$LANG")/$label"
     rm -rf "$DEST"; mkdir -p "$DEST"
     xcrun xcresulttool export attachments --path "$RESULT" --output-path "$DEST" > /dev/null
     python3 - "$DEST" <<'PY'
@@ -156,6 +188,7 @@ PY
     rm -rf "$RESULT"
     echo "  -> $DEST"
     ls "$DEST"
+  done
     sips -g pixelWidth -g pixelHeight "$DEST"/02-models.png | tail -2
     xcrun simctl shutdown "$UDID" 2>/dev/null || true
 done

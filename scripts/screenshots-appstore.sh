@@ -43,7 +43,9 @@ WANT="${1:-all}"
 
 # App Store listing locales. The bundle only ever has one es.lproj; es-ES is the
 # storefront the Spanish listing uses.
-LANGS="ru en es"
+# Overridable so a single locale can be re-shot without redoing the others:
+#   CORVIN_SHOT_LANGS=es ./scripts/screenshots-appstore.sh iphone
+LANGS="${CORVIN_SHOT_LANGS:-ru en es}"
 
 # Plain functions rather than associative arrays: macOS ships bash 3.2, where
 # `declare -A` does not exist and `[ru]=` is parsed as an arithmetic index.

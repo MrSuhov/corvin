@@ -42,18 +42,23 @@ final class AppStoreScreenshotTests: XCTestCase {
             XCTFail("history search field not found")
             return
         }
-        search.tap()
-
-        // Waited for, not slept through. The globe is tapped by screen position,
-        // and that position is inside the tab bar when no keyboard covers it: a
-        // keyboard that came up late meant the tap selected a tab, and the
-        // capture was of an ordinary app screen filed as 01-keyboard.png.
+        // Tapping the field is retried for the same reason tapping a tab is: a
+        // tap is dropped every so often, and a search field that never took
+        // focus shows no keyboard at all. Tapping one that is already focused
+        // costs nothing.
         //
-        // `app.keys` rather than `app.keyboards`: a keyboard extension runs in
-        // its own process, which the latter does not see, though its keys are in
-        // the query tree all the same.
-        XCTAssertTrue(app.keys.firstMatch.waitForExistence(timeout: 20),
-                      "no keyboard came up for the search field")
+        // `app.keys` rather than `app.keyboards` is what says a keyboard is up:
+        // a keyboard extension runs in its own process, which the latter does
+        // not see, though its keys are in the query tree all the same.
+        var keyboardIsUp = false
+        for _ in 1...4 {
+            search.tap()
+            if app.keys.firstMatch.waitForExistence(timeout: 8) {
+                keyboardIsUp = true
+                break
+            }
+        }
+        XCTAssertTrue(keyboardIsUp, "no keyboard came up for the search field")
 
         // iOS opens whichever keyboard was used last, and that outlives a
         // reboot, so Corvin's may already be showing or may be a globe tap or

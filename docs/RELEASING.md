@@ -82,3 +82,43 @@ deltas, hosted on **GitHub Releases**.
 - URLs are hardcoded in [`Info.plist`](../macOS/Resources/Info.plist) (`SUFeedURL`)
   and [`scripts/release-appcast.sh`](../scripts/release-appcast.sh)
   (`DOWNLOAD_PREFIX`). Update both if the repo or hosting changes.
+
+## Model catalogue (independent of app releases)
+
+The list of downloadable models is served from
+`https://hyperstack.ru/corvin/models.json`, so it can change without shipping an
+app update. Both iOS and macOS read it at launch and fall back to the compiled-in
+`WhisperModel.all` when the manifest is unreachable or its `schemaVersion` is
+newer than the client understands.
+
+To add, remove or re-point a model:
+
+1. Edit `WhisperModel.all` in [`Shared/Core/ModelManager.swift`](../Shared/Core/ModelManager.swift).
+   It stays the source of truth for *which* models exist and how they are
+   described — and doubles as the offline fallback, so it may lag behind the
+   published manifest but should not contradict it.
+2. Publish:
+   ```bash
+   ./scripts/publish-models-manifest.sh          # generate, upload, verify
+   ./scripts/publish-models-manifest.sh --dry-run
+   ```
+
+The generator reads sha256 and exact byte sizes from Hugging Face's LFS metadata,
+so integrity data is never maintained by hand. Every download is verified against
+that hash before it is moved into the models directory; a mismatch deletes the
+file and surfaces `ModelError.checksumMismatch`.
+
+Clients compare the manifest's sha256 against a record of what they installed
+(`Models/installed-models.json`) and offer an **Update** button when they differ.
+Nothing is re-downloaded automatically — these files run to gigabytes. Models
+installed before this bookkeeping existed are adopted as current when their
+on-disk size matches the manifest exactly, which avoids re-hashing gigabytes on
+first launch.
+
+Newly appearing model ids raise a badge on the Models tab (iOS) or a banner in the
+model window (macOS), cleared as soon as the list is opened. On a fresh install
+the first catalogue is adopted silently, so a new user is not told that all 15
+models are "new".
+
+Serving is a static `handle_path /corvin/*` block in the Caddyfile on `reactor`
+(`/var/www/corvin`), placed ahead of the catch-all proxy.

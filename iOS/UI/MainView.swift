@@ -22,6 +22,9 @@ struct MainView: View {
                     Image(systemName: "cpu")
                     Text("Модели")
                 }
+                // Quiet nudge that the remote catalogue grew; cleared as soon as
+                // the list is opened.
+                .badge(modelManager.unseenModelIDs.isEmpty ? 0 : modelManager.unseenModelIDs.count)
 
             iOSSettingsView()
                 .tabItem {

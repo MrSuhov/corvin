@@ -17,6 +17,24 @@ struct ModelManagerView: View {
                 .cornerRadius(8)
             }
 
+            if !modelManager.unseenModelIDs.isEmpty {
+                HStack {
+                    Image(systemName: "sparkles")
+                        .foregroundColor(.blue)
+                    Text(String(format: "models.new.banner".localized, modelManager.unseenModelIDs.count))
+                        .font(.caption)
+                    Spacer()
+                    Button("models.refresh".localized) {
+                        Task { await modelManager.refreshCatalog() }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                }
+                .padding(8)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(8)
+            }
+
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(modelManager.models) { model in
@@ -27,6 +45,8 @@ struct ModelManagerView: View {
             }
         }
         .padding()
+        // Opening the window is the notification; the badge has served its purpose.
+        .onAppear { modelManager.markModelsAsSeen() }
     }
 }
 
@@ -39,6 +59,25 @@ struct ModelCardView: View {
 
     private var isActive: Bool {
         modelManager.activeModel?.id == model.id
+    }
+
+    private var isNew: Bool {
+        modelManager.unseenModelIDs.contains(model.id)
+    }
+
+    /// Downloading an already-installed model is how an update is applied: the file
+    /// is verified and replaces the old one in place.
+    private func startDownload() {
+        isDownloading = true
+        error = nil
+        modelManager.downloadModel(model, progress: { p in
+            downloadProgress = p
+        }, completion: { result in
+            isDownloading = false
+            if case .failure(let err) = result {
+                error = err.localizedDescription
+            }
+        })
     }
 
     var body: some View {
@@ -65,6 +104,15 @@ struct ModelCardView: View {
                         .foregroundColor(.green)
                         .cornerRadius(4)
                 }
+                if isNew {
+                    Text("models.new.tag".localized)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.blue.opacity(0.2))
+                        .foregroundColor(.blue)
+                        .cornerRadius(4)
+                }
             }
 
             // Row 2: specs
@@ -77,6 +125,12 @@ struct ModelCardView: View {
             .font(.caption)
             .foregroundColor(.secondary)
 
+            if model.updateAvailable {
+                Text("models.update.available".localized)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+
             if let error = error {
                 Text(error)
                     .font(.caption)
@@ -85,8 +139,11 @@ struct ModelCardView: View {
 
             // Row 3: actions
             HStack {
-                if model.isDownloaded {
-                    if !isActive {
+                if model.isDownloaded && !isDownloading {
+                    if model.updateAvailable {
+                        Button("models.update".localized) { startDownload() }
+                            .modifier(ProminentButtonCompat())
+                    } else if !isActive {
                         Button("models.select".localized) {
                             modelManager.setActiveModel(model)
                         }
@@ -110,19 +167,8 @@ struct ModelCardView: View {
                         .font(.caption)
                     }
                 } else {
-                    Button("models.download".localized) {
-                        isDownloading = true
-                        error = nil
-                        modelManager.downloadModel(model, progress: { p in
-                            downloadProgress = p
-                        }, completion: { result in
-                            isDownloading = false
-                            if case .failure(let err) = result {
-                                error = err.localizedDescription
-                            }
-                        })
-                    }
-                    .modifier(ProminentButtonCompat())
+                    Button("models.download".localized) { startDownload() }
+                        .modifier(ProminentButtonCompat())
                 }
             }
         }

@@ -24,8 +24,13 @@ struct WhisperModel: Identifiable, Codable, Equatable {
     let recommended: Bool
     let chipRequirement: ChipType? // nil = works on both
     let tier: ModelTier
+    /// Exact download size. Only the remote manifest knows it; the compiled-in
+    /// catalogue leaves it nil and falls back to the human-readable `size`.
+    var sizeBytes: Int64? = nil
     var isDownloaded: Bool = false
     var downloadProgress: Double = 0
+    /// True when the manifest advertises a different sha256 than the copy on disk.
+    var updateAvailable: Bool = false
 
     var isPro: Bool { tier == .pro }
 
@@ -142,8 +147,13 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var models: [WhisperModel] = []
     @Published var activeModel: WhisperModel?
     @Published private(set) var downloadTasks: [String: URLSessionDownloadTask] = [:]
+    /// Models present in the manifest that this install has never seen before.
+    /// Drives the "new models" badge; cleared once the user opens the model list.
+    @Published private(set) var unseenModelIDs: Set<String> = []
+    @Published private(set) var catalogSource: ModelCatalog.Source = .bundled
 
     private let modelsDirectory: URL
+    private var installedStore: InstalledModelStore!
     private var session: URLSession!
     let chipType: ChipType
     private var progressCallbacks: [String: (Double) -> Void] = [:]
@@ -185,6 +195,8 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         #endif
         session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
 
+        installedStore = InstalledModelStore(directory: modelsDirectory)
+
         models = WhisperModel.all.filter { model in
             model.chipRequirement == nil || model.chipRequirement == chipType
         }
@@ -192,7 +204,51 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         installBundledModels()
         refreshModelStatus()
         reconnectToExistingTasks()
+
+        // The compiled-in list is shown immediately so the UI never waits on the
+        // network; the manifest replaces it a moment later if it is reachable.
+        Task { await refreshCatalog() }
     }
+
+    // MARK: - Remote catalogue
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+    }
+
+    /// Pulls the manifest and reconciles it with what is on disk.
+    @MainActor
+    func refreshCatalog() async {
+        let (fetched, source) = await ModelCatalog.load(cacheDirectory: modelsDirectory, appVersion: appVersion)
+        let applicable = fetched.filter { $0.chipRequirement == nil || $0.chipRequirement == chipType }
+        guard !applicable.isEmpty else { return }
+
+        let knownIDs = Set(defaults.stringArray(forKey: Self.seenModelsKey) ?? [])
+        // On a fresh install everything is "new", which would be noise — adopt the
+        // first catalogue silently and only announce what appears after it.
+        if knownIDs.isEmpty {
+            defaults.set(applicable.map(\.id), forKey: Self.seenModelsKey)
+        } else {
+            unseenModelIDs = Set(applicable.map(\.id)).subtracting(knownIDs)
+            if !unseenModelIDs.isEmpty {
+                flog("ModelCatalog: \(unseenModelIDs.count) new models: \(unseenModelIDs.sorted().joined(separator: ", "))")
+            }
+        }
+
+        catalogSource = source
+        models = applicable
+        refreshModelStatus()
+    }
+
+    /// Called when the user opens the model list — stops the badge from nagging.
+    func markModelsAsSeen() {
+        guard !unseenModelIDs.isEmpty else { return }
+        let seen = Set(defaults.stringArray(forKey: Self.seenModelsKey) ?? []).union(models.map(\.id))
+        defaults.set(Array(seen), forKey: Self.seenModelsKey)
+        unseenModelIDs = []
+    }
+
+    private static let seenModelsKey = "seenModelIDs"
 
     /// Reconnect to any background download tasks that survived app restart
     private func reconnectToExistingTasks() {
@@ -256,6 +312,28 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             return
         }
 
+        // Verify before the file is allowed anywhere near the models directory.
+        // The catalogue is fetched over the network now, so an unverified download
+        // would mean trusting whatever answered the request.
+        if !model.sha256.isEmpty {
+            guard let actual = ModelCatalog.sha256(ofFileAt: location) else {
+                flog("Model \(modelId): could not hash the download")
+                try? FileManager.default.removeItem(at: location)
+                completionCallbacks[modelId]?(.failure(ModelError.downloadFailed))
+                cleanupTask(modelId: modelId, taskId: downloadTask.taskIdentifier)
+                return
+            }
+            guard actual == model.sha256.lowercased() else {
+                flog("Model \(modelId): checksum mismatch, expected \(model.sha256.prefix(12))… got \(actual.prefix(12))…")
+                try? FileManager.default.removeItem(at: location)
+                clearResumeData(for: modelId)
+                completionCallbacks[modelId]?(.failure(ModelError.checksumMismatch))
+                cleanupTask(modelId: modelId, taskId: downloadTask.taskIdentifier)
+                return
+            }
+            flog("Model \(modelId): checksum verified")
+        }
+
         flog("Moving downloaded model \(modelId) to final location")
         let destination = modelPath(for: model)
         do {
@@ -264,6 +342,13 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             }
             try FileManager.default.moveItem(at: location, to: destination)
             clearResumeData(for: modelId)
+            let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int64) ?? nil
+            if !model.sha256.isEmpty {
+                installedStore.set(InstalledModelRecord(sha256: model.sha256.lowercased(),
+                                                        sizeBytes: size ?? model.sizeBytes ?? 0,
+                                                        installedAt: Date()),
+                                   for: modelId)
+            }
             refreshModelStatus()
             if activeModel == nil {
                 setActiveModel(model)
@@ -373,7 +458,9 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     func refreshModelStatus() {
         for i in models.indices {
             let path = modelPath(for: models[i])
-            models[i].isDownloaded = FileManager.default.fileExists(atPath: path.path)
+            let exists = FileManager.default.fileExists(atPath: path.path)
+            models[i].isDownloaded = exists
+            models[i].updateAvailable = exists && isOutdated(models[i], at: path)
         }
 
         if let savedActive = defaults.string(forKey: "activeModelId"),
@@ -382,6 +469,32 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         } else {
             activeModel = models.first(where: { $0.isDownloaded })
         }
+    }
+
+    /// Decides whether the copy on disk differs from what the manifest advertises.
+    ///
+    /// Models installed before this bookkeeping existed have no record. Re-hashing
+    /// gigabytes on launch just to learn that would be a poor trade, so a legacy
+    /// file whose size matches the manifest exactly is adopted as current; only a
+    /// size mismatch marks it outdated. Everything downloaded from now on is hashed
+    /// for real, so the guess never compounds.
+    private func isOutdated(_ model: WhisperModel, at path: URL) -> Bool {
+        guard !model.sha256.isEmpty else { return false }
+
+        if let record = installedStore.record(for: model.id) {
+            return record.sha256 != model.sha256
+        }
+
+        guard let expected = model.sizeBytes else { return false }
+        let actual = (try? FileManager.default.attributesOfItem(atPath: path.path)[.size] as? Int64) ?? nil
+        guard let actual else { return false }
+        if actual == expected {
+            installedStore.set(InstalledModelRecord(sha256: model.sha256, sizeBytes: actual, installedAt: Date()),
+                               for: model.id)
+            return false
+        }
+        flog("Model \(model.id): on-disk size \(actual) != manifest \(expected), offering update")
+        return true
     }
 
     func setActiveModel(_ model: WhisperModel) {
@@ -436,6 +549,7 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     func deleteModel(_ model: WhisperModel) {
         let path = modelPath(for: model)
         try? FileManager.default.removeItem(at: path)
+        installedStore.remove(model.id)
         refreshModelStatus()
         if activeModel?.id == model.id {
             activeModel = models.first(where: { $0.isDownloaded })

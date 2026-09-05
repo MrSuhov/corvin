@@ -249,3 +249,10 @@
 "keyboard.language.da" = "Danish";
 "keyboard.language.fi" = "Finnish";
 "keyboard.language.nb" = "Norwegian";
+
+/* Remote model catalogue */
+"models.update" = "Update";
+"models.update.available" = "A newer version of this model is available";
+"models.new.tag" = "NEW";
+"models.new.banner" = "New models available: %d";
+"models.refresh" = "Refresh";

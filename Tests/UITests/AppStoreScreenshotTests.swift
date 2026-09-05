@@ -36,7 +36,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         // per idiom against the bottom-left key of the system keyboard.
         try XCTSkipIf(isPad, "globe offset is calibrated for iPhone only")
 
-        try tap(tab: "tab.history")
+        try tap(tab: .history)
         let search = app.searchFields.firstMatch
         guard search.waitForExistence(timeout: 15) else {
             XCTFail("history search field not found")
@@ -65,13 +65,13 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     func testCaptureAppScreens() throws {
-        try tap(tab: "tab.models")
+        try tap(tab: .models)
         capture(named: "02-models")
 
-        try tap(tab: "tab.history")
+        try tap(tab: .history)
         capture(named: "03-history")
 
-        try tap(tab: "tab.settings")
+        try tap(tab: .settings)
         capture(named: "04-settings")
 
         // Opens scrolled to the top, where the setup instructions dominate; the
@@ -81,7 +81,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         // true of the simulator and only of the simulator — do not ship the
         // iPhone copy of this one. It is clean on iPad, where the content fits
         // without scrolling.
-        try tap(tab: "tab.record")
+        try tap(tab: .record)
         let scroll = app.scrollViews.firstMatch
         scroll.swipeUp()
         scroll.swipeUp()
@@ -89,28 +89,60 @@ final class AppStoreScreenshotTests: XCTestCase {
         capture(named: "05-record")
     }
 
-    /// Tabs are found by accessibility identifier, not by their labels: the
-    /// labels are localized now, and this test runs once per language.
+    /// The tabs of `MainView`, in declaration order. The order is what actually
+    /// selects them — see `tap(tab:)`.
+    private enum Tab: String, CaseIterable {
+        case record = "tab.record"
+        case models = "tab.models"
+        case settings = "tab.settings"
+        case history = "tab.history"
+
+        var position: Int { Self.allCases.firstIndex(of: self)! }
+    }
+
+    /// Tabs cannot be found by label — the labels are localized and this test
+    /// runs once per language — and cannot be relied on to be found by
+    /// identifier either: SwiftUI builds the tab bar button itself, and the
+    /// identifier set on the `tabItem`'s `Image` does not always reach it. On
+    /// iOS 26.1 it never does; every button comes back with an empty
+    /// identifier. So: identifier if it is there, position otherwise.
     ///
     /// iPhone puts the tabs in a `tabBar`; iPadOS 26 floats them above the
     /// content, where they are plain buttons rather than tab-bar children.
     /// firstMatch throughout: iPadOS exposes each tab twice, and an ambiguous
     /// query refuses to tap.
-    private func tap(tab identifier: String) throws {
-        let inTabBar = app.tabBars.buttons[identifier].firstMatch
-        if inTabBar.waitForExistence(timeout: 10) {
-            inTabBar.tap()
-        } else {
-            let loose = app.buttons[identifier].firstMatch
-            guard loose.waitForExistence(timeout: 10) else {
-                XCTFail("tab '\(identifier)' not found. Tab bar holds: "
-                        + app.tabBars.buttons.allElementsBoundByIndex
-                            .map { "id=\($0.identifier)" }.joined(separator: ", "))
-                return
-            }
-            loose.tap()
+    private func tap(tab: Tab) throws {
+        // The one real wait is for the bar; the lookups after it are instant,
+        // which matters because most of them are expected to miss.
+        let bar = app.tabBars.firstMatch
+        let hasBar = bar.waitForExistence(timeout: 15)
+
+        let byIdentifier = [
+            bar.buttons[tab.rawValue].firstMatch,
+            app.buttons[tab.rawValue].firstMatch,
+        ]
+        for candidate in byIdentifier where candidate.exists {
+            candidate.tap()
+            sleep(2)
+            return
         }
+
+        guard hasBar, bar.buttons.count == Tab.allCases.count else {
+            XCTFail("""
+                tab '\(tab.rawValue)' not found.
+                tabBars.buttons: \(describe(app.tabBars.buttons))
+                buttons: \(describe(app.buttons))
+                """)
+            return
+        }
+        bar.buttons.element(boundBy: tab.position).tap()
         sleep(2)
+    }
+
+    private func describe(_ query: XCUIElementQuery) -> String {
+        query.allElementsBoundByIndex
+            .map { "[id=\($0.identifier) label=\($0.label)]" }
+            .joined(separator: " ")
     }
 
     private func capture(named name: String) {

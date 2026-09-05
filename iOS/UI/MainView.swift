@@ -7,16 +7,14 @@ struct MainView: View {
     @EnvironmentObject var historyStore: HistoryStore
     @EnvironmentObject var appState: iOSAppState
 
+    /// Tab order is load-bearing: the screenshot test selects tabs by position,
+    /// because the labels are localized and the identifiers below do not always
+    /// survive SwiftUI's translation of a `tabItem` into a tab bar button.
     var body: some View {
         TabView {
             StatusView()
                 .environmentObject(appState)
                 .tabItem {
-                    // The identifier goes on the Image: SwiftUI derives the tab
-                    // bar button's identifier from it, defaulting to the SF
-                    // Symbol name. Applying it to the tab's content instead does
-                    // nothing, and the label is localized, so the screenshot
-                    // test would otherwise have to know all three languages.
                     Image(systemName: "mic.fill")
                         .accessibilityIdentifier("tab.record")
                     Text("tab.record".localized)
@@ -25,11 +23,6 @@ struct MainView: View {
             iOSModelManagerView()
                 .environmentObject(modelManager)
                 .tabItem {
-                    // The identifier goes on the Image: SwiftUI derives the tab
-                    // bar button's identifier from it, defaulting to the SF
-                    // Symbol name. Applying it to the tab's content instead does
-                    // nothing, and the label is localized, so the screenshot
-                    // test would otherwise have to know all three languages.
                     Image(systemName: "cpu")
                         .accessibilityIdentifier("tab.models")
                     Text("tab.models".localized)
@@ -40,11 +33,6 @@ struct MainView: View {
 
             iOSSettingsView()
                 .tabItem {
-                    // The identifier goes on the Image: SwiftUI derives the tab
-                    // bar button's identifier from it, defaulting to the SF
-                    // Symbol name. Applying it to the tab's content instead does
-                    // nothing, and the label is localized, so the screenshot
-                    // test would otherwise have to know all three languages.
                     Image(systemName: "gear")
                         .accessibilityIdentifier("tab.settings")
                     Text("tab.settings".localized)
@@ -53,11 +41,6 @@ struct MainView: View {
             iOSHistoryView()
                 .environmentObject(historyStore)
                 .tabItem {
-                    // The identifier goes on the Image: SwiftUI derives the tab
-                    // bar button's identifier from it, defaulting to the SF
-                    // Symbol name. Applying it to the tab's content instead does
-                    // nothing, and the label is localized, so the screenshot
-                    // test would otherwise have to know all three languages.
                     Image(systemName: "clock")
                         .accessibilityIdentifier("tab.history")
                     Text("tab.history".localized)

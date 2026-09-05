@@ -101,12 +101,20 @@ struct StatusView: View {
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(12)
 
-                // PiP mode for background recording
+                // Background mode. The wording follows the build: with the PiP
+                // layer compiled out there is no "картинка в картинке" to
+                // explain, and saying otherwise would describe a window the user
+                // will never see.
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle(isOn: $keepAlive.isEnabled) {
                         HStack {
+                            #if PIP_KEEPALIVE
                             Image(systemName: "pip.fill")
                                 .foregroundColor(.blue)
+                            #else
+                            Image(systemName: "waveform.circle.fill")
+                                .foregroundColor(.blue)
+                            #endif
                             Text("Работа в фоне")
                                 .fontWeight(.medium)
                         }
@@ -116,9 +124,7 @@ struct StatusView: View {
                         HStack(spacing: 6) {
                             Image(systemName: keepAlive.isHoldingProcess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                                 .foregroundColor(keepAlive.isHoldingProcess ? .green : .orange)
-                            Text(keepAlive.isHoldingProcess
-                                 ? (pipService.isPiPActive ? "Активен (звук + окно PiP)" : "Активен (звук)")
-                                 : "Восстанавливается…")
+                            Text(keepAlive.isHoldingProcess ? holdingDescription : "Восстанавливается…")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -131,6 +137,7 @@ struct StatusView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
+                    #if PIP_KEEPALIVE
                     if !pipService.isPiPPossible {
                         Text("Окно «картинка в картинке» на этом устройстве недоступно — фон держится только звуковым каналом.")
                             .font(.caption)
@@ -142,6 +149,12 @@ struct StatusView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    #else
+                    Text("Оставьте включённым — Corvin запомнит настройку и будет сам поднимать фоновый режим при каждом запуске.\n\nМикрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    #endif
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
@@ -211,6 +224,14 @@ struct StatusView: View {
             // Without this iPad renders the two-column split style, squeezing the
             // whole UI into a sidebar beside an empty detail pane.
             .navigationViewStyle(.stack)
+    }
+
+    private var holdingDescription: String {
+        #if PIP_KEEPALIVE
+        return pipService.isPiPActive ? "Активен (звук + окно PiP)" : "Активен (звук)"
+        #else
+        return "Активен"
+        #endif
     }
 
     @ViewBuilder

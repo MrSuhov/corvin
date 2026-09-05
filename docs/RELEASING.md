@@ -146,12 +146,12 @@ and active, five history entries from
 as a keyboard) and reboots the simulator so `cfprefsd` re-reads the seeded
 preferences.
 
-Two things to check by eye before uploading:
+Check one thing by eye before uploading: `01-keyboard.png` must show Corvin's
+layout — the blue microphone key and the `RU` locale key beside `123`. The
+switch away from the system keyboard is a timed wait, because the extension's
+keys belong to another process and cannot be waited on, so it can occasionally
+catch the system keyboard instead.
 
-- `01-keyboard.png` must show Corvin's layout — the blue microphone key and the
-  `RU` locale key beside `123`. The switch away from the system keyboard is a
-  timed wait, because the extension's keys belong to another process and cannot
-  be waited on.
-- **Do not upload the iPhone `05-record.png`.** It carries "PiP не
-  поддерживается", which is true of the simulator and only of the simulator. The
-  iPad copy of that screen is clean.
+Build the screenshots with `CORVIN_PIP_KEEPALIVE` set the way the submitted
+binary is built. With PiP compiled in, the record screen carries "PiP не
+поддерживается" — true of the simulator and only of the simulator.

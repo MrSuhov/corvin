@@ -43,11 +43,19 @@ final class AppStoreScreenshotTests: XCTestCase {
             return
         }
         search.tap()
-        sleep(3)
+
+        // Waited for, not slept through. The globe is tapped by screen
+        // position, and that position is inside the tab bar when no keyboard is
+        // covering it: with a bare sleep, a keyboard that came up late meant the
+        // tap selected a tab instead, and the capture 15 seconds later was of an
+        // ordinary app screen filed as 01-keyboard.png.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 20),
+                      "software keyboard did not come up for the search field")
 
         // The system keyboard comes up first; the globe key cycles to the next
         // installed one. .GlobalPreferences lists Corvin immediately after the
-        // Russian keyboard, so a single tap lands on it.
+        // system keyboard for the language being captured, so a single tap
+        // lands on it.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.067, dy: 0.958)).tap()
 
         // Nothing here can be waited on properly: the keys belong to the
@@ -59,8 +67,14 @@ final class AppStoreScreenshotTests: XCTestCase {
         // the system keyboard mid-switch.
         //
         // Check the captured file: Corvin's layout is the one with the blue
-        // microphone key and the "RU" locale key next to "123".
+        // microphone key and the locale key next to "123".
         sleep(15)
+
+        // The other half of the same trap: if the globe tap missed the keyboard
+        // it landed on the tab bar, and the capture below would quietly be of
+        // whatever tab that selected.
+        XCTAssertTrue(app.tabBars.buttons.element(boundBy: Tab.history.position).isSelected,
+                      "the globe tap fell through to the tab bar")
         capture(named: "01-keyboard")
     }
 

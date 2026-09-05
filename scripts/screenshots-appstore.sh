@@ -58,6 +58,8 @@ sys_keyboard() {
         es) echo "es_ES@sw=QWERTY-Spanish;hw=Automatic";;
     esac
 }
+# Corvin's own enabled input locales, capture language first.
+kb_languages() { case "$1" in ru) echo "ru,en";; en) echo "en,ru";; es) echo "es,en";; esac; }
 
 # Booting a simulator, a cold build and two test runs each take minutes. Without
 # timestamps the script looks hung.
@@ -115,8 +117,27 @@ PY
 )
     [ -z "$GRP" ] && { echo "  ERROR: app group container not found"; exit 1; }
 
-  for LANG in $LANGS; do
-    step "=== language: $LANG ==="
+    # The keyboard extension is a separate bundle with preferences of its own,
+    # and KeyboardKit remembers there which layout was last used. Nothing in the
+    # app group overrides that, so without seeding it the English and Spanish
+    # captures come out showing a Cyrillic keyboard.
+    KBPREFS=$(python3 - "$UDID" "$BUNDLE_ID.keyboard" <<'KBPY'
+import plistlib, sys, pathlib
+root = pathlib.Path.home()/"Library/Developer/CoreSimulator/Devices"/sys.argv[1]/"data/Containers/Data/PluginKitPlugin"
+for d in sorted(root.iterdir()) if root.exists() else []:
+    meta = d/".com.apple.mobile_container_manager.metadata.plist"
+    if meta.exists():
+        with open(meta, "rb") as f:
+            if plistlib.load(f).get("MCMMetadataIdentifier") == sys.argv[2]:
+                print(d/"Library/Preferences"/(sys.argv[2] + ".plist")); break
+KBPY
+)
+    [ -z "$KBPREFS" ] && echo "  warning: keyboard extension container not found — its layout will be whatever it last used"
+
+  # UILANG, not LANG: that name is already an exported environment variable,
+  # and reassigning it here would hand every child process an invalid locale.
+  for UILANG in $LANGS; do
+    step "=== language: $UILANG ==="
     step "seeding state"
     if [ -f "$MODEL_SRC" ]; then
         mkdir -p "$GRP/Models"
@@ -131,7 +152,7 @@ PY
     /usr/libexec/PlistBuddy -c "Add :activeModelId string small" "$PREFS" 2>/dev/null \
         || /usr/libexec/PlistBuddy -c "Set :activeModelId small" "$PREFS"
 
-    python3 "$PROJECT_ROOT/scripts/seed-screenshot-history.py" "$GRP/Corvin.sqlite"
+    python3 "$PROJECT_ROOT/scripts/seed-screenshot-history.py" "$GRP/Corvin.sqlite" "$UILANG"
 
     # Enable Corvin as a keyboard so the keyboard itself can be photographed.
     # iOS keeps at least one system keyboard, so Corvin goes second and the
@@ -143,18 +164,29 @@ PY
     /usr/libexec/PlistBuddy -c "Add :AppleKeyboards:1 string 'com.corvinvoice.ios.keyboard'" "$GLOBALS"
     /usr/libexec/PlistBuddy -c "Add :AppleKeyboardsExpanded integer 1" "$GLOBALS" 2>/dev/null \
         || /usr/libexec/PlistBuddy -c "Set :AppleKeyboardsExpanded 1" "$GLOBALS"
-    /usr/libexec/PlistBuddy -c "Set :AppleKeyboards:0 $(sys_keyboard "$LANG")" "$GLOBALS"
+    /usr/libexec/PlistBuddy -c "Set :AppleKeyboards:0 $(sys_keyboard "$UILANG")" "$GLOBALS"
+
+    # Corvin's own layout: the set offered behind the language key, and the one
+    # currently showing.
+    /usr/libexec/PlistBuddy -c "Add :keyboardLanguages string $(kb_languages "$UILANG")" "$PREFS" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Set :keyboardLanguages $(kb_languages "$UILANG")" "$PREFS"
+    if [ -n "$KBPREFS" ]; then
+        mkdir -p "$(dirname "$KBPREFS")"
+        KBKEY="com.keyboardkit.settings.keyboard.localeIdentifier"
+        /usr/libexec/PlistBuddy -c "Add :$KBKEY string $(sys_locale "$UILANG")" "$KBPREFS" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Set :$KBKEY $(sys_locale "$UILANG")" "$KBPREFS"
+    fi
 
     # The app's own language, read by LocalizationManager.
-    /usr/libexec/PlistBuddy -c "Add :appLanguage string $LANG" "$PREFS" 2>/dev/null \
-        || /usr/libexec/PlistBuddy -c "Set :appLanguage $LANG" "$PREFS"
+    /usr/libexec/PlistBuddy -c "Add :appLanguage string $UILANG" "$PREFS" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Set :appLanguage $UILANG" "$PREFS"
     # And the simulator's, because the status bar, the system keyboard behind the
     # globe tap and every DateFormatter date in the history list follow it.
-    /usr/libexec/PlistBuddy -c "Set :AppleLanguages:0 $LANG" "$GLOBALS" 2>/dev/null \
+    /usr/libexec/PlistBuddy -c "Set :AppleLanguages:0 $UILANG" "$GLOBALS" 2>/dev/null \
         || /usr/libexec/PlistBuddy -c "Add :AppleLanguages array" "$GLOBALS"
-    /usr/libexec/PlistBuddy -c "Set :AppleLanguages:0 $LANG" "$GLOBALS" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Set :AppleLocale $(sys_locale "$LANG")" "$GLOBALS" 2>/dev/null \
-        || /usr/libexec/PlistBuddy -c "Add :AppleLocale string $(sys_locale "$LANG")" "$GLOBALS"
+    /usr/libexec/PlistBuddy -c "Set :AppleLanguages:0 $UILANG" "$GLOBALS" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Set :AppleLocale $(sys_locale "$UILANG")" "$GLOBALS" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Add :AppleLocale string $(sys_locale "$UILANG")" "$GLOBALS"
 
     # cfprefsd caches preference domains for the lifetime of the boot, so the
     # edits above are only picked up after a restart.
@@ -171,7 +203,7 @@ PY
         -only-testing:CorvinUITests/AppStoreScreenshotTests \
         -resultBundlePath "$RESULT" > /dev/null
 
-    DEST="$OUT_ROOT/$(asc_locale "$LANG")/$label"
+    DEST="$OUT_ROOT/$(asc_locale "$UILANG")/$label"
     rm -rf "$DEST"; mkdir -p "$DEST"
     xcrun xcresulttool export attachments --path "$RESULT" --output-path "$DEST" > /dev/null
     python3 - "$DEST" <<'PY'

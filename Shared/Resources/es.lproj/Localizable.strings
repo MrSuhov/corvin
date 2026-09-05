@@ -47,7 +47,6 @@
 "test.perm.chooseFolder" = "Choose Folder…";
 "test.perm.openSettings" = "Open Settings";
 "test.perm.continueAnyway" = "Transcribe Anyway";
-"test.perm.banner" = "%d folder(s) will not accept transcripts. They will be saved to Application Support instead.";
 "test.queue.summary" = "%d of %d done";
 "test.queue.stop" = "Stop";
 "test.queue.stopping" = "Stopping after the current file…";
@@ -122,7 +121,6 @@
 "settings.language.selectKeyboardLanguages" = "Select Languages";
 "settings.language.keyboardHint" = "Select languages for keyboard switching. Changes apply after keyboard restart.";
 "settings.language.atLeastOne" = "At least one language must be selected";
-"settings.language.restartRequired" = "Some changes may need an app restart.";
 
 // MARK: - iOS Settings
 "settings.title" = "Settings";
@@ -254,7 +252,6 @@
 "models.update" = "Update";
 "models.update.available" = "A newer version of this model is available";
 "models.new.tag" = "NEW";
-"models.new.banner" = "New models available: %d";
 "models.refresh" = "Refresh";
 
 // MARK: - iOS Tabs
@@ -308,3 +305,80 @@
 "background.error.generic" = "Error del modo en segundo plano: %@";
 "pip.error.unsupported" = "La imagen dentro de imagen no es compatible";
 "pip.error.noWindow" = "No hay ventana disponible";
+
+// MARK: - macOS Menu Bar
+"menu.status.ready" = "listo";
+"menu.status.recording" = "grabando…";
+"menu.status.transcribing" = "transcribiendo…";
+"menu.status.inserting" = "insertando…";
+"menu.status.done" = "hecho";
+"menu.status.error" = "error: %@";
+"menu.transcribeFile" = "Transcribir archivo…";
+"menu.recent" = "Recientes:";
+"menu.recent.empty" = "Todavía nada";
+"menu.showHistory" = "Ver todo el historial…";
+"menu.model" = "Modelo: %@ (%@)";
+"menu.changeModel" = "Cambiar modelo…";
+"menu.settings" = "Ajustes…";
+"menu.updateTo" = "Actualizar a %@";
+"menu.checkUpdates" = "Buscar actualizaciones…";
+"menu.about" = "Acerca de";
+"menu.quit" = "Salir";
+"menu.update.updating" = "Actualizando…";
+"menu.update.downloading" = "Descargando…";
+"menu.update.downloadingPercent" = "Descargando %@";
+"menu.update.extracting" = "Extrayendo %@";
+"menu.update.installing" = "Instalando, reiniciando…";
+
+// MARK: - iOS Onboarding
+"common.next" = "Siguiente";
+"onboarding.title" = "Configurar Corvin";
+"onboarding.welcome.title" = "Te damos la bienvenida a Corvin";
+"onboarding.welcome.body" = "Voz a texto directamente desde el teclado.\\nMantén pulsado y habla: el texto aparece al instante.";
+"onboarding.mic.title" = "Acceso al micrófono";
+"onboarding.mic.body" = "Corvin graba tu voz para transcribirla. El audio se procesa en tu dispositivo.";
+"onboarding.mic.allow" = "Permitir micrófono";
+"onboarding.model.title" = "Descargar un modelo";
+"onboarding.model.subtitle" = "Elige un modelo de reconocimiento de voz";
+"onboarding.model.hint" = "Small es un equilibrio razonable entre tamaño, velocidad y precisión multilingüe.";
+"onboarding.model.downloaded" = "Modelo descargado";
+"onboarding.model.download" = "Descargar %@";
+"onboarding.later" = "Configurar más tarde";
+"models.recommended.short" = "rec.";
+"models.downloadingPercent" = "Descargando: %d%%";
+"models.qualityValue" = "Calidad: %@";
+
+// MARK: - History
+"history.search" = "Buscar…";
+"history.search.short" = "Buscar";
+"history.empty" = "Sin entradas";
+"history.export" = "Exportar";
+"history.clearAll" = "Borrar todo";
+"common.copy" = "Copiar";
+
+// MARK: - Windows and Logs (macOS)
+"window.onboarding" = "Te damos la bienvenida a Corvin";
+"window.settings" = "Ajustes de Corvin";
+"window.history" = "Historial de transcripciones — Corvin";
+"logs.export" = "Exportar registros";
+"logs.clear" = "Borrar registros";
+"logs.hint" = "Los registros ayudan a diagnosticar problemas de grabación y transcripción";
+"indicator.transcribing" = "Transcribiendo…";
+
+// MARK: - Errors
+"error.modelNotLoaded" = "Modelo no cargado";
+"error.recognitionFailed" = "No se pudo reconocer el habla";
+"demux.error.notEBML" = "El archivo no es WebM/Matroska";
+"demux.error.noAudioTrack" = "El archivo no tiene pista de audio";
+"capture.error.session" = "Error de sesión de audio: %@";
+"capture.error.openApp" = "Abre la app Corvin para grabar";
+"capture.error.format" = "Formato de audio no admitido";
+"capture.error.tooShort" = "La grabación es demasiado corta (%@)";
+
+// MARK: - App Intents (system language, not the in-app picker)
+"intent.record.title" = "Grabar voz con Corvin";
+"intent.record.description" = "Abre Corvin para grabar tu voz";
+"intent.record.shortTitle" = "Grabar";
+
+// MARK: - Settings values
+"settings.engine.value" = "whisper.cpp (en el dispositivo)";

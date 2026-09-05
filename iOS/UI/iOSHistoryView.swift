@@ -16,7 +16,7 @@ struct iOSHistoryView: View {
                         Image(systemName: "clock")
                             .font(.system(size: 40))
                             .foregroundColor(.secondary)
-                        Text("Нет записей")
+                        Text("history.empty".localized)
                             .foregroundColor(.secondary)
                     }
                 } else {
@@ -28,7 +28,7 @@ struct iOSHistoryView: View {
                                 HStack {
                                     Text(record.date, style: .date)
                                     Text("•")
-                                    Text(String(format: "%.1fс", record.duration))
+                                    Text("common.duration.seconds".localized(with: record.duration))
                                     Text("•")
                                     Text(record.language)
                                 }
@@ -40,20 +40,20 @@ struct iOSHistoryView: View {
                                 Button {
                                     UIPasteboard.general.string = record.text
                                 } label: {
-                                    Label("Копировать", systemImage: "doc.on.doc")
+                                    Label("common.copy".localized, systemImage: "doc.on.doc")
                                 }
                                 Button(role: .destructive) {
                                     historyStore.deleteRecord(record)
                                 } label: {
-                                    Label("Удалить", systemImage: "trash")
+                                    Label("common.delete".localized, systemImage: "trash")
                                 }
                             }
                         }
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Поиск")
-            .navigationTitle("История")
+            .searchable(text: $searchText, prompt: "history.search.short".localized)
+            .navigationTitle("tab.history".localized)
             .toolbar {
                 if !historyStore.records.isEmpty {
                     Button(role: .destructive) {

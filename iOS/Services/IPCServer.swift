@@ -451,7 +451,7 @@ class IPCServer {
                 let dur = String(format: "%.2f", Double(audioData.count) / 32000.0)
                 flog("audio too short: \(audioData.count) bytes (\(dur)s)")
                 self.setResult(id: requestId, response: IPCResultResponse(
-                    status: "error", text: nil, language: nil, error: "Аудио слишком короткое (\(dur)с)"
+                    status: "error", text: nil, language: nil, error: "capture.error.tooShort".localized(with: dur)
                 ))
                 return
             }

@@ -5,3 +5,4 @@
 "NSDownloadsFolderUsageDescription" = "Corvin сохраняет расшифровки рядом с аудиофайлами, которые вы транскрибируете из папки «Загрузки».";
 "NSRemovableVolumesUsageDescription" = "Corvin сохраняет расшифровки рядом с аудиофайлами, которые вы транскрибируете с внешних дисков.";
 "NSNetworkVolumesUsageDescription" = "Corvin сохраняет расшифровки рядом с аудиофайлами, которые вы транскрибируете с сетевых томов.";
+"NSLocalNetworkUsageDescription" = "Corvin использует локальную сеть только для связи между приложением и клавиатурой внутри устройства.";

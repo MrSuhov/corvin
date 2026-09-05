@@ -177,7 +177,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         guard let model = modelManager.activeModel else {
             flog("startRecording: no active model")
-            sessionManager.state = .error("Модель не загружена")
+            sessionManager.state = .error("error.modelNotLoaded".localized)
             return
         }
 
@@ -206,7 +206,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run {
                     guard !result.text.isEmpty else {
                         flog("transcribe: empty result, showing error feedback")
-                        sessionManager.state = .error("Не удалось распознать речь")
+                        sessionManager.state = .error("error.recognitionFailed".localized)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                             if case .error = self.sessionManager.state {
                                 self.sessionManager.state = .idle
@@ -316,7 +316,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Добро пожаловать в Corvin"
+        window.title = "window.onboarding".localized
         window.center()
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: onboardingView)
@@ -350,7 +350,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Настройки Corvin"
+        window.title = "window.settings".localized
         window.titleVisibility = .visible
         window.toolbarStyle = .unifiedCompact
         window.isReleasedWhenClosed = false
@@ -382,7 +382,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "История транскрипций — Corvin"
+        window.title = "window.history".localized
         window.center()
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: view)

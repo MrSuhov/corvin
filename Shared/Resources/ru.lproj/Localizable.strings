@@ -47,7 +47,6 @@
 "test.perm.chooseFolder" = "Выбрать папку…";
 "test.perm.openSettings" = "Открыть Настройки";
 "test.perm.continueAnyway" = "Всё равно транскрибировать";
-"test.perm.banner" = "Папок без доступа: %d. Расшифровки для них уйдут в Application Support.";
 "test.queue.summary" = "%d из %d готово";
 "test.queue.stop" = "Остановить";
 "test.queue.stopping" = "Остановимся после текущего файла…";
@@ -122,7 +121,6 @@
 "settings.language.selectKeyboardLanguages" = "Выбрать языки";
 "settings.language.keyboardHint" = "Выберите языки для переключения клавиатуры. Изменения применятся после перезапуска клавиатуры.";
 "settings.language.atLeastOne" = "Должен быть выбран хотя бы один язык";
-"settings.language.restartRequired" = "Некоторые изменения могут потребовать перезапуска приложения.";
 
 // MARK: - iOS Settings
 "settings.title" = "Настройки";
@@ -254,7 +252,6 @@
 "models.update" = "Обновить";
 "models.update.available" = "Доступна новая версия модели";
 "models.new.tag" = "НОВАЯ";
-"models.new.banner" = "Доступны новые модели: %d";
 "models.refresh" = "Обновить список";
 
 // MARK: - iOS Tabs
@@ -308,3 +305,80 @@
 "background.error.generic" = "Ошибка фонового режима: %@";
 "pip.error.unsupported" = "PiP не поддерживается";
 "pip.error.noWindow" = "Нет окна";
+
+// MARK: - macOS Menu Bar
+"menu.status.ready" = "готов";
+"menu.status.recording" = "запись…";
+"menu.status.transcribing" = "распознаю…";
+"menu.status.inserting" = "вставка…";
+"menu.status.done" = "готово";
+"menu.status.error" = "ошибка: %@";
+"menu.transcribeFile" = "Распознать файл…";
+"menu.recent" = "Последние записи:";
+"menu.recent.empty" = "Пока нет записей";
+"menu.showHistory" = "Показать всю историю…";
+"menu.model" = "Модель: %@ (%@)";
+"menu.changeModel" = "Сменить модель…";
+"menu.settings" = "Настройки…";
+"menu.updateTo" = "Обновить до %@";
+"menu.checkUpdates" = "Проверить обновления…";
+"menu.about" = "О программе";
+"menu.quit" = "Выход";
+"menu.update.updating" = "Обновление…";
+"menu.update.downloading" = "Загрузка…";
+"menu.update.downloadingPercent" = "Загрузка %@";
+"menu.update.extracting" = "Распаковка %@";
+"menu.update.installing" = "Установка, перезапуск…";
+
+// MARK: - iOS Onboarding
+"common.next" = "Далее";
+"onboarding.title" = "Настройка Corvin";
+"onboarding.welcome.title" = "Добро пожаловать в Corvin";
+"onboarding.welcome.body" = "Речь в текст прямо с клавиатуры.\\nНажмите и говорите — текст появится мгновенно.";
+"onboarding.mic.title" = "Доступ к микрофону";
+"onboarding.mic.body" = "Corvin записывает голос для транскрипции. Аудио обрабатывается на устройстве.";
+"onboarding.mic.allow" = "Разрешить микрофон";
+"onboarding.model.title" = "Загрузка модели";
+"onboarding.model.subtitle" = "Выберите модель для распознавания речи";
+"onboarding.model.hint" = "Small — разумный компромисс между размером, скоростью и качеством распознавания нескольких языков.";
+"onboarding.model.downloaded" = "Модель загружена";
+"onboarding.model.download" = "Загрузить %@";
+"onboarding.later" = "Настроить позже";
+"models.recommended.short" = "рек.";
+"models.downloadingPercent" = "Загрузка: %d%%";
+"models.qualityValue" = "Качество: %@";
+
+// MARK: - History
+"history.search" = "Поиск…";
+"history.search.short" = "Поиск";
+"history.empty" = "Нет записей";
+"history.export" = "Экспорт";
+"history.clearAll" = "Очистить всё";
+"common.copy" = "Копировать";
+
+// MARK: - Windows and Logs (macOS)
+"window.onboarding" = "Добро пожаловать в Corvin";
+"window.settings" = "Настройки Corvin";
+"window.history" = "История транскрипций — Corvin";
+"logs.export" = "Экспорт логов";
+"logs.clear" = "Очистить логи";
+"logs.hint" = "Логи помогают диагностировать проблемы с записью и транскрибацией";
+"indicator.transcribing" = "Распознаю…";
+
+// MARK: - Errors
+"error.modelNotLoaded" = "Модель не загружена";
+"error.recognitionFailed" = "Не удалось распознать речь";
+"demux.error.notEBML" = "Файл не является WebM/Matroska";
+"demux.error.noAudioTrack" = "В файле нет аудиодорожки";
+"capture.error.session" = "Ошибка аудио-сессии: %@";
+"capture.error.openApp" = "Откройте приложение Corvin для записи";
+"capture.error.format" = "Неверный формат аудио";
+"capture.error.tooShort" = "Аудио слишком короткое (%@)";
+
+// MARK: - App Intents (system language, not the in-app picker)
+"intent.record.title" = "Записать голос в Corvin";
+"intent.record.description" = "Открывает Corvin для записи голоса";
+"intent.record.shortTitle" = "Запись";
+
+// MARK: - Settings values
+"settings.engine.value" = "whisper.cpp (на устройстве)";

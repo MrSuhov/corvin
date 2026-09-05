@@ -1,0 +1,9 @@
+/*
+  AppShortcuts.strings
+  Siri phrases, keyed by the English literal in StartRecordingIntent.swift.
+  Note the ${applicationName} spelling: the Swift side writes \(.applicationName),
+  and a mismatch here fails silently.
+*/
+
+"Record voice with ${applicationName}" = "Graba voz con ${applicationName}";
+"Transcribe with ${applicationName}" = "Transcribe con ${applicationName}";

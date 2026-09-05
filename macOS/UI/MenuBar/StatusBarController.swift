@@ -155,12 +155,12 @@ class StatusBarController: NSObject {
         // Status
         let statusText: String
         switch sessionManager.state {
-        case .idle: statusText = "готов"
-        case .recording: statusText = "запись..."
-        case .transcribing: statusText = "распознаю..."
-        case .inserting: statusText = "вставка..."
-        case .done: statusText = "готово"
-        case .error(let msg): statusText = "ошибка: \(msg)"
+        case .idle: statusText = "menu.status.ready".localized
+        case .recording: statusText = "menu.status.recording".localized
+        case .transcribing: statusText = "menu.status.transcribing".localized
+        case .inserting: statusText = "menu.status.inserting".localized
+        case .done: statusText = "menu.status.done".localized
+        case .error(let msg): statusText = "menu.status.error".localized(with: msg)
         }
         let statusItem = NSMenuItem(title: "● Corvin — \(statusText)", action: nil, keyEquivalent: "")
         statusItem.isEnabled = false
@@ -169,7 +169,7 @@ class StatusBarController: NSObject {
 
         // File transcription
         let transcribeFile = NSMenuItem(
-            title: "Распознать файл...",
+            title: "menu.transcribeFile".localized,
             action: #selector(showSettingsTranscription),
             keyEquivalent: ""
         )
@@ -178,13 +178,13 @@ class StatusBarController: NSObject {
         menu.addItem(NSMenuItem.separator())
 
         // Recent records
-        let recentTitle = NSMenuItem(title: "Последние записи:", action: nil, keyEquivalent: "")
+        let recentTitle = NSMenuItem(title: "menu.recent".localized, action: nil, keyEquivalent: "")
         recentTitle.isEnabled = false
         menu.addItem(recentTitle)
 
         let recent = Array(historyStore.records.prefix(3))
         if recent.isEmpty {
-            let empty = NSMenuItem(title: "  Пока нет записей", action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: "  " + "menu.recent.empty".localized, action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
         } else {
@@ -197,24 +197,24 @@ class StatusBarController: NSObject {
             }
         }
 
-        let historyItem = NSMenuItem(title: "Показать всю историю...", action: #selector(showHistory), keyEquivalent: "")
+        let historyItem = NSMenuItem(title: "menu.showHistory".localized, action: #selector(showHistory), keyEquivalent: "")
         historyItem.target = self
         menu.addItem(historyItem)
         menu.addItem(NSMenuItem.separator())
 
         // Model info
         if let model = modelManager.activeModel {
-            let modelItem = NSMenuItem(title: "Модель: \(model.name) (\(model.size))", action: nil, keyEquivalent: "")
+            let modelItem = NSMenuItem(title: "menu.model".localized(with: model.name, model.size), action: nil, keyEquivalent: "")
             modelItem.isEnabled = false
             menu.addItem(modelItem)
         }
-        let changeModel = NSMenuItem(title: "Сменить модель...", action: #selector(showSettingsModels), keyEquivalent: "")
+        let changeModel = NSMenuItem(title: "menu.changeModel".localized, action: #selector(showSettingsModels), keyEquivalent: "")
         changeModel.target = self
         menu.addItem(changeModel)
         menu.addItem(NSMenuItem.separator())
 
         // Settings & Quit
-        let settings = NSMenuItem(title: "Настройки...", action: #selector(showSettings), keyEquivalent: ",")
+        let settings = NSMenuItem(title: "menu.settings".localized, action: #selector(showSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
 
@@ -229,14 +229,14 @@ class StatusBarController: NSObject {
             updates.isEnabled = false
         } else if let version = pendingUpdateVersion {
             updates = NSMenuItem(
-                title: "Обновить до \(version)",
+                title: "menu.updateTo".localized(with: version),
                 action: #selector(UpdaterService.installUpdate(_:)),
                 keyEquivalent: ""
             )
             updates.target = UpdaterService.shared
         } else {
             updates = NSMenuItem(
-                title: "Проверить обновления...",
+                title: "menu.checkUpdates".localized,
                 action: #selector(UpdaterService.checkForUpdatesInBackground(_:)),
                 keyEquivalent: ""
             )
@@ -244,11 +244,11 @@ class StatusBarController: NSObject {
         }
         menu.addItem(updates)
 
-        let about = NSMenuItem(title: "О программе", action: #selector(showAbout), keyEquivalent: "")
+        let about = NSMenuItem(title: "menu.about".localized, action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
 
-        let quit = NSMenuItem(title: "Выход", action: #selector(quitApp), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "menu.quit".localized, action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
@@ -260,14 +260,14 @@ class StatusBarController: NSObject {
 
         switch progress {
         case .starting:
-            return "Обновление…"
+            return "menu.update.updating".localized
         case .downloading(let fraction):
-            guard let fraction = fraction else { return "Загрузка…" }
-            return "Загрузка \(percent(fraction))"
+            guard let fraction = fraction else { return "menu.update.downloading".localized }
+            return "menu.update.downloadingPercent".localized(with: percent(fraction))
         case .extracting(let fraction):
-            return "Распаковка \(percent(fraction))"
+            return "menu.update.extracting".localized(with: percent(fraction))
         case .installing:
-            return "Установка, перезапуск…"
+            return "menu.update.installing".localized
         }
     }
 

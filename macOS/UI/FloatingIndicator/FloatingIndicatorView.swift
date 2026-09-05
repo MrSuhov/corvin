@@ -78,7 +78,7 @@ struct FloatingIndicatorView: View {
             }
 
         case .transcribing:
-            Text("Распознаю...")
+            Text("indicator.transcribing".localized)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.primary)
 

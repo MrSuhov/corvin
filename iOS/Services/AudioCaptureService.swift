@@ -42,11 +42,11 @@ class AudioCaptureService {
         var errorDescription: String? {
             switch self {
             case .sessionActivationFailed(let msg):
-                return "Ошибка аудио-сессии: \(msg)"
+                return "capture.error.session".localized(with: msg)
             case .engineStartFailed(let msg):
-                return "Откройте приложение Corvin для записи"
+                return "capture.error.openApp".localized
             case .invalidFormat:
-                return "Неверный формат аудио"
+                return "capture.error.format".localized
             }
         }
     }

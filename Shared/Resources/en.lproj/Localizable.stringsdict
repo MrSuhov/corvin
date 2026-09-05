@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>models.new.banner</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+				<key>one</key>
+				<string>%d new model available</string>
+				<key>other</key>
+				<string>%d new models available</string>
+		</dict>
+	</dict>
+	<key>history.count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+				<key>one</key>
+				<string>%d entry</string>
+				<key>other</key>
+				<string>%d entries</string>
+		</dict>
+	</dict>
+	<key>test.perm.banner</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+				<key>one</key>
+				<string>%d folder will not accept transcripts. It will be saved to Application Support instead.</string>
+				<key>other</key>
+				<string>%d folders will not accept transcripts. They will be saved to Application Support instead.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

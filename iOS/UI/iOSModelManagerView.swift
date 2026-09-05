@@ -11,7 +11,7 @@ struct iOSModelManagerView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "sparkles")
                                 .foregroundColor(.blue)
-                            Text(String(format: "models.new.banner".localized, modelManager.unseenModelIDs.count))
+                            Text("models.new.banner".localized(with: modelManager.unseenModelIDs.count))
                                 .font(.subheadline)
                         }
                     }

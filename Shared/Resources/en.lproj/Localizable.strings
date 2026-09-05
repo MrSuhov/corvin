@@ -47,7 +47,6 @@
 "test.perm.chooseFolder" = "Choose Folder…";
 "test.perm.openSettings" = "Open Settings";
 "test.perm.continueAnyway" = "Transcribe Anyway";
-"test.perm.banner" = "%d folder(s) will not accept transcripts. They will be saved to Application Support instead.";
 "test.queue.summary" = "%d of %d done";
 "test.queue.stop" = "Stop";
 "test.queue.stopping" = "Stopping after the current file…";
@@ -122,7 +121,6 @@
 "settings.language.selectKeyboardLanguages" = "Select Languages";
 "settings.language.keyboardHint" = "Select languages for keyboard switching. Changes apply after keyboard restart.";
 "settings.language.atLeastOne" = "At least one language must be selected";
-"settings.language.restartRequired" = "Some changes may need an app restart.";
 
 // MARK: - iOS Settings
 "settings.title" = "Settings";
@@ -254,7 +252,6 @@
 "models.update" = "Update";
 "models.update.available" = "A newer version of this model is available";
 "models.new.tag" = "NEW";
-"models.new.banner" = "New models available: %d";
 "models.refresh" = "Refresh";
 
 // MARK: - iOS Tabs
@@ -308,3 +305,80 @@
 "background.error.generic" = "Background mode error: %@";
 "pip.error.unsupported" = "Picture in Picture is not supported";
 "pip.error.noWindow" = "No window available";
+
+// MARK: - macOS Menu Bar
+"menu.status.ready" = "ready";
+"menu.status.recording" = "recording…";
+"menu.status.transcribing" = "transcribing…";
+"menu.status.inserting" = "inserting…";
+"menu.status.done" = "done";
+"menu.status.error" = "error: %@";
+"menu.transcribeFile" = "Transcribe File…";
+"menu.recent" = "Recent:";
+"menu.recent.empty" = "Nothing yet";
+"menu.showHistory" = "Show All History…";
+"menu.model" = "Model: %@ (%@)";
+"menu.changeModel" = "Change Model…";
+"menu.settings" = "Settings…";
+"menu.updateTo" = "Update to %@";
+"menu.checkUpdates" = "Check for Updates…";
+"menu.about" = "About";
+"menu.quit" = "Quit";
+"menu.update.updating" = "Updating…";
+"menu.update.downloading" = "Downloading…";
+"menu.update.downloadingPercent" = "Downloading %@";
+"menu.update.extracting" = "Extracting %@";
+"menu.update.installing" = "Installing, restarting…";
+
+// MARK: - iOS Onboarding
+"common.next" = "Next";
+"onboarding.title" = "Set up Corvin";
+"onboarding.welcome.title" = "Welcome to Corvin";
+"onboarding.welcome.body" = "Speech to text straight from your keyboard.\\nHold and speak — the text appears at once.";
+"onboarding.mic.title" = "Microphone access";
+"onboarding.mic.body" = "Corvin records your voice to transcribe it. The audio is processed on your device.";
+"onboarding.mic.allow" = "Allow microphone";
+"onboarding.model.title" = "Download a model";
+"onboarding.model.subtitle" = "Choose a speech recognition model";
+"onboarding.model.hint" = "Small is a sensible balance of size, speed and multilingual accuracy.";
+"onboarding.model.downloaded" = "Model downloaded";
+"onboarding.model.download" = "Download %@";
+"onboarding.later" = "Set up later";
+"models.recommended.short" = "rec.";
+"models.downloadingPercent" = "Downloading: %d%%";
+"models.qualityValue" = "Quality: %@";
+
+// MARK: - History
+"history.search" = "Search…";
+"history.search.short" = "Search";
+"history.empty" = "No entries";
+"history.export" = "Export";
+"history.clearAll" = "Clear all";
+"common.copy" = "Copy";
+
+// MARK: - Windows and Logs (macOS)
+"window.onboarding" = "Welcome to Corvin";
+"window.settings" = "Corvin Settings";
+"window.history" = "Transcription History — Corvin";
+"logs.export" = "Export logs";
+"logs.clear" = "Clear logs";
+"logs.hint" = "Logs help diagnose problems with recording and transcription";
+"indicator.transcribing" = "Transcribing…";
+
+// MARK: - Errors
+"error.modelNotLoaded" = "Model not loaded";
+"error.recognitionFailed" = "Speech recognition failed";
+"demux.error.notEBML" = "The file is not WebM/Matroska";
+"demux.error.noAudioTrack" = "The file has no audio track";
+"capture.error.session" = "Audio session error: %@";
+"capture.error.openApp" = "Open the Corvin app to record";
+"capture.error.format" = "Unsupported audio format";
+"capture.error.tooShort" = "The recording is too short (%@)";
+
+// MARK: - App Intents (system language, not the in-app picker)
+"intent.record.title" = "Record voice with Corvin";
+"intent.record.description" = "Opens Corvin to record your voice";
+"intent.record.shortTitle" = "Record";
+
+// MARK: - Settings values
+"settings.engine.value" = "whisper.cpp (on-device)";

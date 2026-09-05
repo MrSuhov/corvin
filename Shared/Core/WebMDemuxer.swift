@@ -26,8 +26,8 @@ enum WebMDemuxer {
 
         var errorDescription: String? {
             switch self {
-            case .notEBML: return "Файл не является WebM/Matroska"
-            case .noAudioTrack: return "В файле нет аудиодорожки"
+            case .notEBML: return "demux.error.notEBML".localized
+            case .noAudioTrack: return "demux.error.noAudioTrack".localized
             }
         }
     }

@@ -1,0 +1,17 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  localization:
+    # No Xcode, no whisper build — this is meant to answer in seconds so it can
+    # run on every push without anyone minding.
+    runs-on: macos-26
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check localization catalogues
+        run: ./scripts/check-localization.py

@@ -105,7 +105,7 @@ struct iOSSettingsView: View {
                     HStack {
                         Text("settings.about.transcription".localized)
                         Spacer()
-                        Text("whisper.cpp (on-device)")
+                        Text("settings.engine.value".localized)
                             .foregroundColor(.secondary)
                     }
                 }

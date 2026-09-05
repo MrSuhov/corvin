@@ -21,7 +21,7 @@ struct ModelManagerView: View {
                 HStack {
                     Image(systemName: "sparkles")
                         .foregroundColor(.blue)
-                    Text(String(format: "models.new.banner".localized, modelManager.unseenModelIDs.count))
+                    Text("models.new.banner".localized(with: modelManager.unseenModelIDs.count))
                         .font(.caption)
                     Spacer()
                     Button("models.refresh".localized) {

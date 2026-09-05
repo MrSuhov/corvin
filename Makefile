@@ -1,4 +1,4 @@
-.PHONY: vendor-macos vendor-ios project setup-macos setup-ios build-dmg deploy-testflight clean
+.PHONY: lint-l10n l10n-report vendor-macos vendor-ios project setup-macos setup-ios build-dmg deploy-testflight clean
 
 # Build whisper.cpp for macOS (universal arm64 + x86_64)
 vendor-macos:
@@ -36,3 +36,11 @@ clean:
 	rm -rf vendor/whisper.cpp/build-*
 	rm -rf build
 	rm -rf .build
+
+# Localization guardrail. `lint-l10n` fails on drift; `l10n-report` just prints
+# per-language coverage so you can see what is left to translate.
+lint-l10n:
+	./scripts/check-localization.py
+
+l10n-report:
+	./scripts/check-localization.py --report

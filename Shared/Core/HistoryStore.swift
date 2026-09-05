@@ -139,7 +139,8 @@ class HistoryStore: ObservableObject {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
             formatter.timeStyle = .short
-            return "[\(formatter.string(from: record.date))] (\(record.language), \(String(format: "%.1f", record.duration))с)\n\(record.text)"
+            let duration = "common.duration.seconds".localized(with: record.duration)
+            return "[\(formatter.string(from: record.date))] (\(record.language), \(duration))\n\(record.text)"
         }.joined(separator: "\n\n---\n\n")
     }
 

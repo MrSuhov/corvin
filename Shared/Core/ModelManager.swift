@@ -561,8 +561,8 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         case checksumMismatch
         var errorDescription: String? {
             switch self {
-            case .downloadFailed: return "Не удалось скачать модель"
-            case .checksumMismatch: return "Контрольная сумма не совпадает"
+            case .downloadFailed: return "models.error.downloadFailed".localized
+            case .checksumMismatch: return "models.error.checksumMismatch".localized
             }
         }
     }

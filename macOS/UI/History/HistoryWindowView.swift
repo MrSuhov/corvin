@@ -13,7 +13,7 @@ struct HistoryWindowView: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                TextField("Поиск...", text: $searchText)
+                TextField("history.search".localized, text: $searchText)
                     .textFieldStyle(.plain)
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
@@ -34,7 +34,7 @@ struct HistoryWindowView: View {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 40))
                         .foregroundColor(.secondary)
-                    Text("Нет записей")
+                    Text("history.empty".localized)
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,14 +64,14 @@ struct HistoryWindowView: View {
 
             // Bottom toolbar
             HStack {
-                Text("\(filteredRecords.count) записей")
+                Text("history.count".localized(with: filteredRecords.count))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
-                Button("Экспорт") {
+                Button("history.export".localized) {
                     exportRecords()
                 }
-                Button("Очистить всё") {
+                Button("history.clearAll".localized) {
                     historyStore.deleteAll()
                 }
                 .foregroundColor(.red)
@@ -132,7 +132,7 @@ struct RecordRowView: View {
                         Text(timeString)
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text(String(format: "%.1fс", record.duration))
+                        Text("common.duration.seconds".localized(with: record.duration))
                             .font(.caption)
                             .foregroundColor(.secondary)
                         Text(record.language.uppercased())

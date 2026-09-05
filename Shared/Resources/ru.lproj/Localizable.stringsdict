@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>models.new.banner</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+				<key>one</key>
+				<string>Доступна %d новая модель</string>
+				<key>few</key>
+				<string>Доступно %d новые модели</string>
+				<key>many</key>
+				<string>Доступно %d новых моделей</string>
+				<key>other</key>
+				<string>Доступно %d новых моделей</string>
+		</dict>
+	</dict>
+	<key>history.count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+				<key>one</key>
+				<string>%d запись</string>
+				<key>few</key>
+				<string>%d записи</string>
+				<key>many</key>
+				<string>%d записей</string>
+				<key>other</key>
+				<string>%d записей</string>
+		</dict>
+	</dict>
+	<key>test.perm.banner</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+				<key>one</key>
+				<string>%d папка без доступа. Расшифровки для неё уйдут в Application Support.</string>
+				<key>few</key>
+				<string>%d папки без доступа. Расшифровки для них уйдут в Application Support.</string>
+				<key>many</key>
+				<string>%d папок без доступа. Расшифровки для них уйдут в Application Support.</string>
+				<key>other</key>
+				<string>%d папок без доступа. Расшифровки для них уйдут в Application Support.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

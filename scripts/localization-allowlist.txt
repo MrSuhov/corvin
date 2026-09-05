@@ -1,0 +1,13 @@
+# Files exempt from the hardcoded-literal scan.
+#
+# Every entry needs a "# reason:" — the linter rejects the file otherwise, which
+# is what keeps this from becoming a dumping ground for whatever failed today.
+#
+# Format: <path prefix>  # reason: <why>
+
+Shared/Core/LayoutMapper.swift              # reason: QWERTY<->ЙЦУКЕН physical key map — data, not copy
+CorvinKeyboard/InputSet+Russian.swift       # reason: keyboard row letters — data, not copy
+Shared/Core/LocalizationManager.swift       # reason: "English"/"Русский"/"Español" are endonyms, never translated
+
+# Single literals rather than whole files.
+::OGG (Telegram), WAV, M4A, MP3, AIFF   # reason: file-format list, all proper nouns

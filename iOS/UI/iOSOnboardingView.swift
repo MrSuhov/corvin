@@ -20,7 +20,7 @@ struct iOSOnboardingView: View {
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .animation(.easeInOut, value: step)
             }
-            .navigationTitle("Настройка Corvin")
+            .navigationTitle("onboarding.title".localized)
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 // Check mic permission on appear (user may have granted in Settings)
@@ -38,13 +38,13 @@ struct iOSOnboardingView: View {
             Image(systemName: "mic.fill")
                 .font(.system(size: 60))
                 .foregroundColor(.blue)
-            Text("Добро пожаловать в Corvin")
+            Text("onboarding.welcome.title".localized)
                 .font(.title2.bold())
-            Text("Речь в текст прямо с клавиатуры.\nНажмите и говорите — текст появится мгновенно.")
+            Text("onboarding.welcome.body".localized)
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
             Spacer()
-            Button("Далее") { step = 1 }
+            Button("common.next".localized) { step = 1 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .padding(.bottom, 40)
@@ -58,19 +58,19 @@ struct iOSOnboardingView: View {
             Image(systemName: micGranted ? "mic.fill" : "mic.slash")
                 .font(.system(size: 60))
                 .foregroundColor(micGranted ? .green : .orange)
-            Text("Доступ к микрофону")
+            Text("onboarding.mic.title".localized)
                 .font(.title2.bold())
-            Text("Corvin записывает голос для транскрипции. Аудио обрабатывается на устройстве.")
+            Text("onboarding.mic.body".localized)
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
             Spacer()
             if micGranted {
-                Button("Далее") { step = 2 }
+                Button("common.next".localized) { step = 2 }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .padding(.bottom, 40)
             } else {
-                Button("Разрешить микрофон") {
+                Button("onboarding.mic.allow".localized) {
                     AVAudioSession.sharedInstance().requestRecordPermission { granted in
                         DispatchQueue.main.async { micGranted = granted }
                     }
@@ -110,12 +110,12 @@ struct iOSOnboardingView: View {
                 .font(.system(size: 50))
                 .foregroundColor(.blue)
                 .padding(.top, 24)
-            Text("Загрузка модели")
+            Text("onboarding.model.title".localized)
                 .font(.title2.bold())
-            Text("Выберите модель для распознавания речи")
+            Text("onboarding.model.subtitle".localized)
                 .foregroundColor(.secondary)
                 .font(.subheadline)
-            Text("Small — разумный компромисс между размером, скоростью и качеством распознавания нескольких языков.")
+            Text("onboarding.model.hint".localized)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -138,7 +138,7 @@ struct iOSOnboardingView: View {
                                         Text(model.name)
                                             .font(.headline)
                                         if model.recommended {
-                                            Text("рек.")
+                                            Text("models.recommended.short".localized)
                                                 .font(.caption2)
                                                 .padding(.horizontal, 6)
                                                 .padding(.vertical, 2)
@@ -148,11 +148,11 @@ struct iOSOnboardingView: View {
                                         }
                                     }
                                     if isThisModelDownloading {
-                                        Text("\(model.size) · Загрузка: \(Int(model.downloadProgress * 100))%")
+                                        Text("\(model.size) · " + "models.downloadingPercent".localized(with: Int(model.downloadProgress * 100)))
                                             .font(.caption)
                                             .foregroundColor(.blue)
                                     } else {
-                                        Text("\(model.size) · Качество: \(model.quality)")
+                                        Text("\(model.size) · " + "models.qualityValue".localized(with: model.quality.localized))
                                             .font(.caption)
                                             .foregroundColor(.secondary)
                                     }
@@ -189,18 +189,18 @@ struct iOSOnboardingView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)
-                        Text("Модель загружена")
+                        Text("onboarding.model.downloaded".localized)
                     }
                 } else if isModelDownloading {
                     VStack(spacing: 4) {
                         ProgressView(value: currentDownloadProgress)
                             .padding(.horizontal, 40)
-                        Text("Загрузка: \(Int(currentDownloadProgress * 100))%")
+                        Text("models.downloadingPercent".localized(with: Int(currentDownloadProgress * 100)))
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 } else {
-                    Button("Загрузить \(model.name)") {
+                    Button("onboarding.model.download".localized(with: model.name)) {
                         // Start download - progress tracked by ModelManager
                         modelManager.downloadModel(model, progress: { _ in }, completion: { [weak modelManager] result in
                             if case .success = result {
@@ -216,14 +216,14 @@ struct iOSOnboardingView: View {
             // Bottom buttons
             if modelManager.activeModel != nil || isAnyModelDownloading {
                 // "Готово" — model already active or downloading in background
-                Button("Готово") {
+                Button("common.done".localized) {
                     completeOnboarding()
                 }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
             } else {
                 // No model yet and not downloading — allow skip
-                Button("Настроить позже") {
+                Button("onboarding.later".localized) {
                     completeOnboarding()
                 }
                     .foregroundColor(.secondary)

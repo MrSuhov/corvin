@@ -16,6 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check localization catalogues
+        run: ./scripts/check-localization.py
+
+
       - name: Clone whisper.cpp
         run: |
           git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git vendor/whisper.cpp

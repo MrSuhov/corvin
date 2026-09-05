@@ -183,18 +183,18 @@ struct GeneralSettingsView: View {
             Divider()
 
             HStack {
-                Button("Экспорт логов") {
+                Button("logs.export".localized) {
                     exportLogs()
                 }
                 .modifier(BorderedButtonCompat())
 
-                Button("Очистить логи") {
+                Button("logs.clear".localized) {
                     FileLogger.shared.clear()
                 }
                 .modifier(BorderedButtonCompat())
                 .foregroundColor(.secondary)
             }
-            Text("Логи помогают диагностировать проблемы с записью и транскрибацией")
+            Text("logs.hint".localized)
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
@@ -451,9 +451,6 @@ struct LanguageSettingsView: View {
                 }
             }
 
-            Text("settings.language.restartRequired".localized)
-                .font(.caption)
-                .foregroundColor(.secondary)
         }
         .padding()
     }

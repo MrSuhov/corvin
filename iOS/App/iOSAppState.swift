@@ -226,7 +226,7 @@ class iOSAppState: ObservableObject {
     func startRecording() {
         guard sessionManager.state == .idle || sessionManager.state != .recording else { return }
         guard modelManager.activeModel != nil else {
-            sessionManager.state = .error("Модель не загружена")
+            sessionManager.state = .error("error.modelNotLoaded".localized)
             return
         }
         sessionManager.state = .recording
@@ -237,7 +237,7 @@ class iOSAppState: ObservableObject {
     func transcribeFile(url: URL) {
         guard sessionManager.state == .idle else { return }
         guard modelManager.activeModel != nil else {
-            sessionManager.state = .error("Модель не загружена")
+            sessionManager.state = .error("error.modelNotLoaded".localized)
             return
         }
 

@@ -119,6 +119,16 @@ targets:
         OTHER_LDFLAGS: "-lwhisper -lggml -lggml-base -lggml-cpu -lggml-metal -lopusfile -lopus -logg -lc++ -framework Accelerate -framework Metal -framework MetalKit"
         IPHONEOS_DEPLOYMENT_TARGET: "16.0"
         SWIFT_INCLUDE_PATHS: "$(SRCROOT)/Sources/CWhisper/include-ios $(SRCROOT)/Sources/COpus/include-ios"
+      configs:
+        # Release is the archive/TestFlight path. Sign it manually against a
+        # pre-provisioned App Store profile: with automatic signing the default
+        # CODE_SIGN_IDENTITY is "Apple Development", so the archive went looking
+        # for a development profile and only succeeded by minting a throwaway
+        # certificate on every CI run. Debug is untouched and stays automatic.
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "Corvin iOS App Store CI"
 
   # --- Keyboard Extension ---
   CorvinKeyboard:
@@ -142,6 +152,11 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         IPHONEOS_DEPLOYMENT_TARGET: "16.0"
         APPLICATION_EXTENSION_API_ONLY: YES
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "Corvin Keyboard App Store CI"
 
   # --- UI Tests ---
   CorvinUITests:

@@ -86,6 +86,12 @@ jobs:
           install_profile "$IOS_PROFILE_APP"
           install_profile "$IOS_PROFILE_KEYBOARD"
 
+          # Release signs manually as "Apple Distribution" (see project.yml).
+          # Print what the imported p12 actually provides — identity names are not
+          # secret, and a mismatch here is the first thing to check if signing fails.
+          echo "--- available signing identities ---"
+          security find-identity -v -p codesigning
+
       - name: Build & Upload to TestFlight
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

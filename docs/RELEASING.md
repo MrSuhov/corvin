@@ -73,6 +73,30 @@ deltas, hosted on **GitHub Releases**.
    Existing installs poll `SUFeedURL` (daily by default), see the new entry,
    download the delta (small) or full DMG, verify the EdDSA signature, and update.
 
+### When generate_appcast cannot reach the signing key
+
+`Warning: Private key for account ed25519 not found in the Keychain (-25320)`
+does **not** mean the key is gone. -25320 is `errSecInDarkWake`: the key is
+there, but the keychain item's ACL lists the specific binary that was authorized
+before, and this `generate_appcast` is at a different path — so macOS wants to
+ask, and cannot. Run it where a dialog can be answered and choose *Always
+Allow*, or feed the key in explicitly, which never touches the ACL prompt twice:
+
+```bash
+security find-generic-password -s "https://sparkle-project.org" -a ed25519 -w \
+  | generate_appcast --ed-key-file - --download-url-prefix "$PREFIX" dist
+```
+
+**Clear the cache after any failed run.** A run that generates deltas and then
+fails to sign them leaves markers in
+`~/Library/Caches/Sparkle_generate_appcast/` named `<delta>..ignore`, and every
+later run silently skips exactly those deltas — the appcast comes out correct
+and signed, just without them, so every install downloads the full 431 MB
+instead of ~600 KB. Nothing in the output says so. `rm -rf
+~/Library/Caches/Sparkle_generate_appcast` and re-run.
+
+Check before pushing: the new `<item>` must contain a `<sparkle:deltas>` block.
+
 ## Notes
 
 - The repo `MrSuhov/corvin` must be **public** for `raw.githubusercontent.com`

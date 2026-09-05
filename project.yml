@@ -140,6 +140,10 @@ targets:
           - "**/*.md"
       - path: Shared/Networking
       - path: Shared/Core/FileLogger.swift
+    resources:
+      # Required-reason API declaration; the extension needs its own copy, the
+      # host app's manifest does not cover it.
+      - path: CorvinKeyboard/Resources/PrivacyInfo.xcprivacy
     dependencies:
       - package: KeyboardKit
     settings:

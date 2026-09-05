@@ -114,7 +114,9 @@ struct WhisperModel: Identifiable, Codable, Equatable {
 
         // --- Distilled (speed + quality) ---
         WhisperModel(
-            id: "distil-large-v3", name: "distil-large-v3", size: "756 MB", ramRequired: "~900 MB",
+            // 1.4 GB, not the 756 MB this used to claim — the published ggml build is
+            // f16, not quantized. Verified against the Hugging Face blob size.
+            id: "distil-large-v3", name: "distil-large-v3", size: "1.4 GB", ramRequired: "~1.6 GB",
             quality: "models.quality.best_fast", speed: "~6x realtime",
             downloadURL: URL(string: "https://huggingface.co/distil-whisper/distil-large-v3-ggml/resolve/main/ggml-distil-large-v3.bin")!,
             sha256: "", recommended: false, chipRequirement: .applesilicon, tier: .free

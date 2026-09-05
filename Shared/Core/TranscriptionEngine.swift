@@ -96,9 +96,17 @@ class TranscriptionEngine: ObservableObject {
         // whisper_init_from_file from whisper.cpp
         var params = whisper_context_default_params()
         #if os(iOS)
+        #if targetEnvironment(simulator)
+        // The simulator's Metal device reports recommendedMaxWorkingSetSize = 0
+        // and aborts on the model's buffer allocation. CPU is slow here but it
+        // is the only way the app runs at all under the simulator.
+        params.use_gpu = false
+        flog("GPU disabled (simulator has no usable Metal device)")
+        #else
         // Enable Metal GPU on iOS for faster transcription
         params.use_gpu = true
         flog("GPU enabled for iOS (Metal)")
+        #endif
         #endif
         flog("calling whisper_init_from_file_with_params...")
         whisperContext = whisper_init_from_file_with_params(path, params)

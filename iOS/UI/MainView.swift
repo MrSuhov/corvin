@@ -208,6 +208,9 @@ struct StatusView: View {
             }
             .navigationTitle("Corvin")
         }
+            // Without this iPad renders the two-column split style, squeezing the
+            // whole UI into a sidebar beside an empty detail pane.
+            .navigationViewStyle(.stack)
     }
 
     @ViewBuilder

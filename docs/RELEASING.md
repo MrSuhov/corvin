@@ -122,3 +122,36 @@ models are "new".
 
 Serving is a static `handle_path /corvin/*` block in the Caddyfile on `reactor`
 (`/var/www/corvin`), placed ahead of the catch-all proxy.
+
+## App Store screenshots (iOS)
+
+```bash
+./scripts/screenshots-appstore.sh            # both sizes
+./scripts/screenshots-appstore.sh iphone     # one size
+```
+
+Output lands in `build/screenshots/{iphone,ipad}/` at the exact pixel sizes App
+Store Connect requires — 1320x2868 for the 6.9" iPhone set and 2064x2752 for the
+13" iPad set, which is mandatory while `TARGETED_DEVICE_FAMILY` stays `1,2`.
+
+Captures run in the **simulator**, not on a device: the background keep-alive
+puts a Picture-in-Picture window on top of every frame, so device captures come
+out with a stray video overlay. The simulator has no PiP, and no usable Metal
+device either — transcription cannot run there, but every screen renders, which
+is all a screenshot needs.
+
+The script seeds a realistic state before capturing (the `small` model installed
+and active, five history entries from
+`scripts/seed-screenshot-history.py`, onboarding marked done, and Corvin enabled
+as a keyboard) and reboots the simulator so `cfprefsd` re-reads the seeded
+preferences.
+
+Two things to check by eye before uploading:
+
+- `01-keyboard.png` must show Corvin's layout — the blue microphone key and the
+  `RU` locale key beside `123`. The switch away from the system keyboard is a
+  timed wait, because the extension's keys belong to another process and cannot
+  be waited on.
+- **Do not upload the iPhone `05-record.png`.** It carries "PiP не
+  поддерживается", which is true of the simulator and only of the simulator. The
+  iPad copy of that screen is clean.

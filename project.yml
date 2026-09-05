@@ -115,7 +115,9 @@ targets:
         "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]":
           - "$(SRCROOT)/vendor/whisper.cpp/build-ios-universal"
           - "$(SRCROOT)/vendor/opus-build/ios-universal/lib"
-        "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]": "$(SRCROOT)/vendor/whisper.cpp/build-ios-sim-universal"
+        "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]":
+          - "$(SRCROOT)/vendor/whisper.cpp/build-ios-sim-universal"
+          - "$(SRCROOT)/vendor/opus-build/iossim-universal/lib"
         OTHER_LDFLAGS: "-lwhisper -lggml -lggml-base -lggml-cpu -lggml-metal -lopusfile -lopus -logg -lc++ -framework Accelerate -framework Metal -framework MetalKit"
         IPHONEOS_DEPLOYMENT_TARGET: "16.0"
         SWIFT_INCLUDE_PATHS: "$(SRCROOT)/Sources/CWhisper/include-ios $(SRCROOT)/Sources/COpus/include-ios"

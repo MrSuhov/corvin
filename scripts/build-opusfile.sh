@@ -3,6 +3,10 @@ set -euo pipefail
 
 # Build libogg, libopus, and libopusfile as static universal libraries for macOS
 # and arm64 for iOS, similar to how whisper.cpp is vendored.
+#
+#   ./scripts/build-opusfile.sh macos    # arm64 + x86_64 universal
+#   ./scripts/build-opusfile.sh ios      # arm64, iphoneos SDK
+#   ./scripts/build-opusfile.sh iossim   # arm64, iphonesimulator SDK
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR_DIR="$PROJECT_DIR/vendor"
@@ -16,7 +20,7 @@ OGG_URL="https://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.gz"
 OPUS_URL="https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz"
 OPUSFILE_URL="https://downloads.xiph.org/releases/opus/opusfile-${OPUSFILE_VERSION}.tar.gz"
 
-PLATFORM="${1:-macos}"  # macos or ios
+PLATFORM="${1:-macos}"  # macos, ios or iossim
 
 echo "=== Building OGG/Opus/Opusfile ($PLATFORM) ==="
 
@@ -51,6 +55,12 @@ build_lib() {
     if [ "$PLATFORM" = "ios" ]; then
         sdk_path=$(xcrun --sdk iphoneos --show-sdk-path)
         cflags="$cflags -isysroot $sdk_path -arch $arch -mios-version-min=15.0"
+        host="--host=aarch64-apple-darwin"
+    elif [ "$PLATFORM" = "iossim" ]; then
+        # The simulator is a distinct platform, not just a different arch: a
+        # device-SDK .a will not link into a simulator build even on arm64.
+        sdk_path=$(xcrun --sdk iphonesimulator --show-sdk-path)
+        cflags="$cflags -isysroot $sdk_path -arch $arch -mios-simulator-version-min=15.0"
         host="--host=aarch64-apple-darwin"
     else
         sdk_path=$(xcrun --sdk macosx --show-sdk-path)
@@ -91,10 +101,10 @@ build_lib() {
     cd "$BUILD_DIR/src"
 }
 
-if [ "$PLATFORM" = "ios" ]; then
-    ARCHS="arm64"
-else
+if [ "$PLATFORM" = "macos" ]; then
     ARCHS="arm64 x86_64"
+else
+    ARCHS="arm64"
 fi
 
 for arch in $ARCHS; do

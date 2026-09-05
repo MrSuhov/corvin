@@ -4,9 +4,13 @@
 vendor-macos:
 	./scripts/build-whisper-macos.sh
 
-# Build whisper.cpp for iOS (arm64)
+# Build whisper.cpp and opus for iOS (arm64, device + simulator).
+# The simulator slices are needed for the App Store screenshot run, which
+# cannot use a device: the keep-alive PiP window would appear in every frame.
 vendor-ios:
 	./scripts/build-whisper-ios.sh
+	./scripts/build-opusfile.sh ios
+	./scripts/build-opusfile.sh iossim
 
 # Generate Xcode project (requires xcodegen: brew install xcodegen)
 project:

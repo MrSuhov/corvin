@@ -36,6 +36,9 @@ struct iOSModelManagerView: View {
             // Seeing the list is what clears the badge — the user has now been told.
             .onAppear { modelManager.markModelsAsSeen() }
         }
+            // Without this iPad renders the two-column split style, squeezing the
+            // whole UI into a sidebar beside an empty detail pane.
+            .navigationViewStyle(.stack)
     }
 
     private func downloadModel(_ model: WhisperModel) {

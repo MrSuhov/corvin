@@ -9,11 +9,14 @@ class KeyboardViewController: KeyboardInputViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         flog("Keyboard viewDidAppear")
+        // Wake the host out of low-power mode and find out whether it is alive at all.
+        pttController?.keyboardDidAppear()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         flog("Keyboard viewWillDisappear")
+        pttController?.keyboardWillDisappear()
     }
 
     override func viewWillSetupKeyboardView() {
@@ -59,7 +62,7 @@ class KeyboardViewController: KeyboardInputViewController {
                 },
                 collapsedView: { $0.view },
                 emojiKeyboard: { $0.view },
-                toolbar: { _ in EmptyView() }
+                toolbar: { _ in CorvinToolbarView(pttController: ptt) }
             )
         }
     }
@@ -70,7 +73,7 @@ struct MicKeyContent: View {
     @ObservedObject var pttController: PTTController
 
     var body: some View {
-        if pttController.isTranscribing {
+        if pttController.isTranscribing || pttController.isStarting {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 .scaleEffect(0.6)
@@ -111,16 +114,15 @@ struct MicKeyButton: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
-                    if !pttController.isRecording && !pttController.isTranscribing && pttController.lastError == nil {
+                    // startRecording() clears lastError itself, so an error never
+                    // costs the user an extra tap to dismiss.
+                    if !pttController.isRecording && !pttController.isStarting && !pttController.isTranscribing {
                         pttController.startRecording()
                     }
                 }
                 .onEnded { _ in
-                    if pttController.isRecording {
+                    if pttController.isRecording || pttController.isStarting {
                         pttController.stopRecording()
-                    }
-                    if pttController.lastError != nil {
-                        pttController.lastError = nil
                     }
                 }
         )
@@ -129,10 +131,12 @@ struct MicKeyButton: View {
     private var buttonColor: Color {
         if pttController.isRecording {
             return .red
+        } else if pttController.isStarting {
+            return .blue.opacity(0.6)
         } else if pttController.isTranscribing {
             return .orange
         } else if pttController.lastError != nil {
-            return .orange
+            return .gray
         } else {
             return .blue
         }

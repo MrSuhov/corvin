@@ -27,6 +27,9 @@ class IPCServer {
     // Active recording session
     private var activeRecordingId: String?
 
+    /// Reports keyboard presence to the app. Invoked on the IPC queue — hop to main in the handler.
+    var onKeyboardPresenceChanged: ((Bool) -> Void)?
+
     init(transcriptionService: TranscriptionService, audioCaptureService: AudioCaptureService) {
         self.transcriptionService = transcriptionService
         self.audioCaptureService = audioCaptureService
@@ -354,6 +357,12 @@ class IPCServer {
         } else if method == "GET" && path.hasPrefix("/result") {
             handleResult(path: path, connection: connection)
         } else if method == "GET" && path == "/ping" {
+            sendJSON(statusCode: 200, json: ["status": "ok"], connection: connection)
+        } else if method == "POST" && path == "/keyboard-active" {
+            onKeyboardPresenceChanged?(true)
+            sendJSON(statusCode: 200, json: ["status": "ok"], connection: connection)
+        } else if method == "POST" && path == "/keyboard-inactive" {
+            onKeyboardPresenceChanged?(false)
             sendJSON(statusCode: 200, json: ["status": "ok"], connection: connection)
         } else if method == "POST" && path.hasPrefix("/test-mode") {
             handleTestMode(path: path, connection: connection)

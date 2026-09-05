@@ -23,7 +23,19 @@ class PiPService: NSObject, ObservableObject {
     private var lastFramePushTime: Date?
     private var frameCount: Int64 = 0
 
+    /// Whether background mode wants PiP up. Set by `BackgroundKeepAliveService`.
+    private var shouldMaintain = false
+    /// Distinguishes "we stopped it" from "another app stole it".
+    private var userInitiatedStop = false
+    private var restartAttempt = 0
+    private var restartWorkItem: DispatchWorkItem?
+    private var isIdle = false
+
     private let pipSize = CGSize(width: 600, height: 150)
+    private let activeFrameIntervalMs = 500
+    private let idleFrameIntervalMs = 1000
+    /// Backoff schedule for reclaiming PiP after another app took it.
+    private let restartDelays: [TimeInterval] = [0, 1, 3, 10, 30]
 
     private override init() {
         super.init()
@@ -38,18 +50,11 @@ class PiPService: NSObject, ObservableObject {
     private func setupPiP() {
         flog("PiP setup started")
 
-        // CRITICAL: Use .playAndRecord with .voiceChat mode from the start
-        // This allows both playback (for PiP) and recording (for mic) without switching
-        // Switching audio session categories breaks PiP
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
-            try audioSession.setActive(true)
-            flog("Audio session: playAndRecord/voiceChat (unified mode)")
-        } catch {
-            flog("Audio session error: \(error)")
-            errorMessage = "Ошибка аудио"
-            return
+        // The unified .playAndRecord/.voiceChat session is owned by BackgroundKeepAliveService —
+        // both PiP playback and mic capture share it, and switching categories breaks PiP.
+        // A session failure must NOT abort PiP setup: the two keep-alive layers are independent.
+        if !BackgroundKeepAliveService.shared.configureAudioSession() {
+            flog("PiP setup continuing despite audio session failure")
         }
 
         let isSupported = AVPictureInPictureController.isPictureInPictureSupported()
@@ -110,6 +115,9 @@ class PiPService: NSObject, ObservableObject {
         let controller = AVPictureInPictureController(contentSource: contentSource)
 
         controller.delegate = self
+        // Let the system re-enter PiP on its own whenever the app backgrounds,
+        // so a stolen PiP recovers without the user touching anything.
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
         self.pipController = controller
 
         flog("PiP controller created")
@@ -118,8 +126,15 @@ class PiPService: NSObject, ObservableObject {
             let isPossible = change.newValue ?? false
             flog("PiP isPossible: \(isPossible)")
             Task { @MainActor in
-                self?.isPiPPossible = isPossible
-                if isPossible { self?.errorMessage = nil }
+                guard let self = self else { return }
+                self.isPiPPossible = isPossible
+                if isPossible {
+                    self.errorMessage = nil
+                    // PiP became available again (e.g. the other app released it).
+                    if self.shouldMaintain && !self.isPiPActive {
+                        self.startPiP()
+                    }
+                }
             }
         }
 
@@ -127,35 +142,49 @@ class PiPService: NSObject, ObservableObject {
         startRenderingFrames()
 
         flog("PiP setup complete")
+
+        // Background mode may already be on from a previous launch. PiP only becomes
+        // "possible" once frames are flowing, so poll with backoff rather than assuming
+        // the KVO will fire.
+        if shouldMaintain && !isPiPActive {
+            scheduleRestart()
+        }
     }
 
     private func startRenderingFrames() {
+        stopRenderingFrames()
+
         // Push initial frame immediately
         pushFrame()
 
+        let intervalMs = isIdle ? idleFrameIntervalMs : activeFrameIntervalMs
         // Use DispatchSourceTimer instead of CADisplayLink for reliable background execution
         let timer = DispatchSource.makeTimerSource(flags: [], queue: DispatchQueue.main)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(500), leeway: .milliseconds(100))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(intervalMs), leeway: .milliseconds(100))
         timer.setEventHandler { [weak self] in
             self?.pushFrameTick()
         }
         timer.resume()
         frameTimer = timer
-        flog("Frame timer started (DispatchSourceTimer, 500ms interval)")
+        flog("Frame timer started (DispatchSourceTimer, \(intervalMs)ms interval)")
+    }
+
+    private func stopRenderingFrames() {
+        guard frameTimer != nil else { return }
+        frameTimer?.cancel()
+        frameTimer = nil
+        lastFramePushTime = nil
+        flog("Frame timer stopped")
     }
 
     private func pushFrameTick() {
         let now = Date()
-        // Log periodically to track if timer is running in background
+        // If gap is large we likely woke from suspension - notify to restart IPC.
+        // Even short suspensions (10-20s) can leave NWListener in zombie state.
         if let last = lastFramePushTime {
             let gap = now.timeIntervalSince(last)
             if gap > 10 {
-                flog("Frame push after gap: \(String(format: "%.1f", gap))s")
-            }
-            // If gap > 10s, we likely woke from suspension - notify to restart IPC
-            // Even short suspensions (10-20s) can leave NWListener in zombie state
-            if gap > 10 {
-                flog("Detected wake from suspension, posting restart notification")
+                flog("Frame push after gap: \(String(format: "%.1f", gap))s — posting restart notification")
                 NotificationCenter.default.post(name: .pipWokeFromSuspension, object: nil)
             }
         }
@@ -284,56 +313,139 @@ class PiPService: NSObject, ObservableObject {
 
     // MARK: - Public API
 
+    /// Declares whether background mode wants PiP up.
+    /// Owned by `BackgroundKeepAliveService`, which persists the user's intent.
+    func setMaintain(_ maintain: Bool) {
+        guard shouldMaintain != maintain else { return }
+        shouldMaintain = maintain
+        flog("PiP setMaintain(\(maintain))")
+        if maintain {
+            restartAttempt = 0
+            startPiP()
+        } else {
+            stopPiP()
+        }
+    }
+
+    /// Low-power mode while the keyboard is not on screen.
+    func setIdle(_ idle: Bool) {
+        guard isIdle != idle else { return }
+        isIdle = idle
+        flog("PiP setIdle(\(idle))")
+        if frameTimer != nil {
+            startRenderingFrames()
+        }
+    }
+
     func startPiP() {
         flog("startPiP")
+        cancelPendingRestart()
+
         guard let controller = pipController else {
-            errorMessage = "PiP не готов"
+            // Setup has not finished yet; the isPictureInPicturePossible KVO will retry.
+            flog("startPiP: controller not ready yet")
             return
         }
         guard !isPiPActive else { return }
+
+        userInitiatedStop = false
+        pipWindow?.isHidden = false
+        if frameTimer == nil { startRenderingFrames() }
 
         if controller.isPictureInPicturePossible {
             flog("Starting PiP...")
             controller.startPictureInPicture()
         } else {
-            errorMessage = "PiP недоступен"
+            flog("startPiP: not possible right now, scheduling retry")
+            scheduleRestart()
         }
     }
 
     func stopPiP() {
-        guard let controller = pipController, isPiPActive else { return }
-        flog("Stopping PiP...")
-        controller.stopPictureInPicture()
-    }
-
-    /// Ensure audio session is ready for recording
-    /// Note: We use unified playAndRecord mode, so this just ensures it's active
-    func enableRecordingMode() {
-        flog("enableRecordingMode called (unified mode - no switch needed)")
-        // With unified .playAndRecord mode, no switching needed
-        // Just ensure session is active
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            flog("Session activation error: \(error)")
+        userInitiatedStop = true
+        cancelPendingRestart()
+        if isPiPActive {
+            flog("Stopping PiP...")
+            pipController?.stopPictureInPicture()
         }
+        // Genuinely release resources — this used to leave the frame timer and the
+        // hidden window running forever.
+        stopRenderingFrames()
+        pipWindow?.isHidden = true
     }
 
-    /// Called after recording stops
-    /// Note: We use unified playAndRecord mode, so this just refreshes PiP
-    func disableRecordingMode() {
-        flog("disableRecordingMode called (unified mode - refreshing PiP)")
-        // With unified mode, no switching needed
-        // Just refresh PiP frames to ensure display is working
-        refreshPiP()
+    /// Called when the app returns to the foreground. Cheap and idempotent.
+    func reassertIfNeeded() {
+        guard shouldMaintain, !isPiPActive else { return }
+        flog("PiP reassert on foreground")
+        restartAttempt = 0
+        startPiP()
+    }
+
+    /// Full rebuild after `AVAudioSession.mediaServicesWereResetNotification`.
+    func rebuildAfterMediaServicesReset() {
+        flog("PiP rebuilding after media services reset")
+        cancelPendingRestart()
+        stopRenderingFrames()
+        possibleObservation?.invalidate()
+        possibleObservation = nil
+        pipController = nil
+        sampleBufferLayer = nil
+        cachedPixelBuffer = nil
+        frameCount = 0
+        pipWindow?.isHidden = true
+        pipWindow = nil
+        containerView = nil
+        isPiPActive = false
+        isPiPPossible = false
+        setupPiP()
     }
 
     func setRecording(_ recording: Bool) {
         flog("Recording: \(recording)")
+        BackgroundKeepAliveService.shared.setRecording(recording)
         // When recording stops, refresh PiP to prevent black screen
         if !recording {
             refreshPiP()
         }
+    }
+
+    // MARK: - Restart backoff
+
+    private func scheduleRestart() {
+        guard shouldMaintain, !userInitiatedStop else { return }
+        cancelPendingRestart()
+
+        let delay = restartDelays[min(restartAttempt, restartDelays.count - 1)]
+        restartAttempt += 1
+        flog("PiP restart attempt \(restartAttempt) in \(delay)s")
+
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.restartWorkItem = nil
+                guard self.shouldMaintain, !self.isPiPActive else { return }
+                guard let controller = self.pipController else {
+                    self.scheduleRestart()
+                    return
+                }
+                if controller.isPictureInPicturePossible {
+                    flog("PiP restart: possible, starting")
+                    if self.frameTimer == nil { self.startRenderingFrames() }
+                    controller.startPictureInPicture()
+                } else {
+                    flog("PiP restart: still not possible")
+                    self.scheduleRestart()
+                }
+            }
+        }
+        restartWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func cancelPendingRestart() {
+        restartWorkItem?.cancel()
+        restartWorkItem = nil
     }
 
     /// Refresh PiP frames after any potential disruption
@@ -387,6 +499,8 @@ class PiPService: NSObject, ObservableObject {
     deinit {
         frameTimer?.cancel()
         frameTimer = nil
+        restartWorkItem?.cancel()
+        restartWorkItem = nil
         possibleObservation?.invalidate()
         if backgroundTask != .invalid {
             UIApplication.shared.endBackgroundTask(backgroundTask)
@@ -424,6 +538,8 @@ extension PiPService: AVPictureInPictureControllerDelegate {
             flog("PiP started!")
             self.isPiPActive = true
             self.errorMessage = nil
+            self.restartAttempt = 0
+            self.cancelPendingRestart()
             self.beginBackgroundTask()
         }
     }
@@ -434,16 +550,28 @@ extension PiPService: AVPictureInPictureControllerDelegate {
 
     nonisolated func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
         Task { @MainActor in
-            flog("PiP stopped")
             self.isPiPActive = false
             self.endBackgroundTask()
+
+            if self.shouldMaintain && !self.userInitiatedStop {
+                // Another app claimed the system's single PiP window (or iOS dropped ours).
+                // Not surfaced as an error: the silent-audio layer still holds the process,
+                // so dictation keeps working while we wait to reclaim PiP.
+                flog("PiP stopped externally — will try to reclaim")
+                self.scheduleRestart()
+            } else {
+                flog("PiP stopped (user initiated)")
+            }
         }
     }
 
     nonisolated func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         Task { @MainActor in
+            // Expected while the app is backgrounded or another app holds PiP —
+            // keep retrying quietly, the audio layer is what actually keeps us alive.
             flog("PiP failed: \(error)")
-            self.errorMessage = "Ошибка PiP"
+            self.isPiPActive = false
+            self.scheduleRestart()
         }
     }
 

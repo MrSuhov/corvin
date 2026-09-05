@@ -232,10 +232,9 @@ struct iOSOnboardingView: View {
     }
 
     private func completeOnboarding() {
-        // Enable background mode (PiP) for seamless keyboard experience
-        if PiPService.shared.isPiPPossible && !PiPService.shared.isPiPActive {
-            PiPService.shared.startPiP()
-        }
+        // Enable background mode for a seamless keyboard experience.
+        // This is persisted, so it survives relaunches and PiP being stolen.
+        BackgroundKeepAliveService.shared.isEnabled = true
         // Reset step for potential future re-onboarding
         step = 0
         onComplete()

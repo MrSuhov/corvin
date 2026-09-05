@@ -44,6 +44,7 @@ struct StatusView: View {
     @EnvironmentObject var sessionManager: SessionManager
     @EnvironmentObject var modelManager: ModelManager
     @ObservedObject private var pipService = PiPService.shared
+    @ObservedObject private var keepAlive = BackgroundKeepAliveService.shared
     @State private var showingFilePicker = false
     @State private var importedFileName: String?
 
@@ -98,17 +99,8 @@ struct StatusView: View {
                 .cornerRadius(12)
 
                 // PiP mode for background recording
-                VStack(spacing: 12) {
-                    Toggle(isOn: Binding(
-                        get: { pipService.isPiPActive },
-                        set: { newValue in
-                            if newValue {
-                                pipService.startPiP()
-                            } else {
-                                pipService.stopPiP()
-                            }
-                        }
-                    )) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle(isOn: $keepAlive.isEnabled) {
                         HStack {
                             Image(systemName: "pip.fill")
                                 .foregroundColor(.blue)
@@ -117,17 +109,38 @@ struct StatusView: View {
                         }
                     }
 
-                    if !pipService.isPiPPossible {
-                        Text("PiP не поддерживается на этом устройстве")
+                    if keepAlive.isEnabled {
+                        HStack(spacing: 6) {
+                            Image(systemName: keepAlive.isHoldingProcess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                                .foregroundColor(keepAlive.isHoldingProcess ? .green : .orange)
+                            Text(keepAlive.isHoldingProcess
+                                 ? (pipService.isPiPActive ? "Активен (звук + окно PiP)" : "Активен (звук)")
+                                 : "Восстанавливается…")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    if let error = keepAlive.errorMessage ?? pipService.errorMessage {
+                        Text(error)
                             .font(.caption)
                             .foregroundColor(.orange)
-                    } else {
-                        Text("На текущий момент единственный способ, которым Apple разрешает доступ к микрофону для фоновых приложений — это картинка в картинке.\n\nВключите перед переходом в стороннее приложение — это позволит приложению Corvin распознавать речь в фоне.\n\nПри этом микрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+
+                    if !pipService.isPiPPossible {
+                        Text("Окно «картинка в картинке» на этом устройстве недоступно — фон держится только звуковым каналом.")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Text("Оставьте включённым — Corvin запомнит настройку и будет сам поднимать фоновый режим при каждом запуске, в том числе после того, как другое приложение заняло окно «картинка в картинке».\n\nМикрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(12)

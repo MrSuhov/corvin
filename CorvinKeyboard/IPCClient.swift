@@ -48,6 +48,31 @@ class IPCClient {
         throw IPCError.connectionFailed
     }
 
+    /// Presence signal for the host app. Single attempt, short timeout — this runs on
+    /// every keyboard appearance and must not block the UI.
+    ///
+    /// Success also proves the host survived in the background, so it doubles as the
+    /// health check: the keyboard extension has no way to launch the host app itself.
+    @discardableResult
+    func notifyKeyboard(active: Bool) async -> Bool {
+        var request = URLRequest(url: active ? IPCConfig.keyboardActiveURL : IPCConfig.keyboardInactiveURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 2
+
+        let session = createSession()
+        defer { session.invalidateAndCancel() }
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            let ok = (response as? HTTPURLResponse)?.statusCode == 200
+            flog("IPC keyboard-\(active ? "active" : "inactive"): ok=\(ok)")
+            return ok
+        } catch {
+            flog("IPC keyboard-\(active ? "active" : "inactive") failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     func startRecording() async throws {
         flog("IPC startRecording: connecting...")
 
@@ -191,9 +216,14 @@ enum IPCError: LocalizedError {
     case connectionFailed
     case serverError(String)
 
+    /// Shown whenever the host app is not reachable. The keyboard extension cannot launch
+    /// it (extensions have no UIApplication), so the user has to open it once — after that
+    /// background mode is persisted and re-arms itself.
+    static let hostAsleepMessage = "Corvin не в фоне. Откройте приложение один раз — дальше фон включится сам."
+
     var errorDescription: String? {
         switch self {
-        case .connectionFailed: return "Откройте приложение Corvin"
+        case .connectionFailed: return IPCError.hostAsleepMessage
         case .serverError(let msg): return msg
         }
     }

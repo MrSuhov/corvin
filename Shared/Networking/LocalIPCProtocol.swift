@@ -13,6 +13,12 @@ enum IPCConfig {
     static let startRecordingURL = URL(string: "http://127.0.0.1:12345/start-recording")!
     static let stopRecordingURL = URL(string: "http://127.0.0.1:12345/stop-recording")!
 
+    /// Keyboard presence signalling. The keyboard extension cannot launch the host app,
+    /// so these double as a liveness probe: a successful call means the host is awake.
+    static let keyboardActiveURL = URL(string: "http://127.0.0.1:12345/keyboard-active")!
+    static let keyboardInactiveURL = URL(string: "http://127.0.0.1:12345/keyboard-inactive")!
+    static let pingURL = URL(string: "http://127.0.0.1:12345/ping")!
+
     static func resultURL(for id: String) -> URL {
         URL(string: "\(resultBaseURL)\(id)")!
     }
@@ -27,4 +33,15 @@ struct IPCResultResponse: Codable {
     let text: String?
     let language: String?
     let error: String?
+}
+
+/// Keys shared between the host app and the keyboard extension via the App Group.
+enum SharedDefaults {
+    static let appGroup = "group.com.corvinvoice.app"
+
+    /// User intent for background mode, persisted across launches.
+    static let backgroundModeEnabled = "backgroundModeEnabled"
+    /// Unix timestamp refreshed by the host's keep-alive watchdog. The keyboard reads it
+    /// to tell "host is asleep" apart from "the request happened to fail".
+    static let hostAliveAt = "hostAliveAt"
 }

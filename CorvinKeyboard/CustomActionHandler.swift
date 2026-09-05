@@ -33,15 +33,14 @@ class CustomActionHandler: KeyboardAction.StandardActionHandler {
     private func handleMicGesture(_ gesture: Keyboard.Gesture) {
         switch gesture {
         case .press:
-            if !pttController.isRecording && !pttController.isTranscribing && pttController.lastError == nil {
+            // startRecording() clears lastError itself — a previous failure must not
+            // swallow the first tap of the retry.
+            if !pttController.isRecording && !pttController.isStarting && !pttController.isTranscribing {
                 pttController.startRecording()
             }
         case .release:
-            if pttController.isRecording {
+            if pttController.isRecording || pttController.isStarting {
                 pttController.stopRecording()
-            }
-            if pttController.lastError != nil {
-                pttController.lastError = nil
             }
         default:
             break

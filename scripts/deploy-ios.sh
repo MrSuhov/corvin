@@ -4,7 +4,7 @@
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BUNDLE_ID="com.corvin.ios"
+BUNDLE_ID="com.corvinvoice.ios"
 DEVICE_ID="00008130-001069A40E31001C"
 BUILD_DIR="/tmp/CorvinBuild"
 SCHEME="CorviniOS"

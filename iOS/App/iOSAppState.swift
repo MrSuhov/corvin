@@ -15,7 +15,8 @@ class iOSAppState: ObservableObject {
     private var audioCaptureService: AudioCaptureService!
     private var cancellables = Set<AnyCancellable>()
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
-    private var pipKeepAliveTimer: DispatchSourceTimer?
+    private var ipcWatchdogTimer: DispatchSourceTimer?
+    private var keyboardActive = false
 
     @Published var onboardingCompleted: Bool {
         didSet {
@@ -51,8 +52,25 @@ class iOSAppState: ObservableObject {
 
         let transcriptionService = TranscriptionService(engine: transcriptionEngine)
         ipcServer = IPCServer(transcriptionService: transcriptionService, audioCaptureService: audioCaptureService)
+        // The keyboard cannot launch us, so its presence signal doubles as a liveness probe:
+        // if this ever arrives, the host survived in the background as intended.
+        ipcServer.onKeyboardPresenceChanged = { [weak self] active in
+            Task { @MainActor in
+                BackgroundKeepAliveService.shared.setKeyboardActive(active)
+                self?.setKeyboardActive(active)
+            }
+        }
         ipcServer.start()
         ipcServerRunning = true
+
+        // Touch the keep-alive service early: it restores the persisted background mode
+        // on launch, so the user never has to find the toggle again.
+        Task { @MainActor in
+            BackgroundKeepAliveService.shared.onKeyboardBecameActive = { [weak self] in
+                self?.ensureModelLoadedInBackground()
+            }
+            _ = BackgroundKeepAliveService.shared.isEnabled
+        }
 
         // Warm up model
         if modelManager.activeModel != nil {
@@ -88,6 +106,12 @@ class iOSAppState: ObservableObject {
             flog("App: didBecomeActive, modelLoaded=\(self?.transcriptionEngine.isModelLoaded ?? false)")
             // Force restart IPC server - it may be in "zombie" state after background
             self?.ipcServer.forceRestart()
+            // Re-arm both keep-alive layers. Simply opening the app is now enough to
+            // recover background mode after another app stole the PiP window.
+            Task { @MainActor in
+                BackgroundKeepAliveService.shared.revive(reason: "didBecomeActive")
+                PiPService.shared.reassertIfNeeded()
+            }
             // Reload model if it was evicted from memory
             if self?.transcriptionEngine.isModelLoaded == false && self?.modelManager.activeModel != nil {
                 DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -123,42 +147,66 @@ class iOSAppState: ObservableObject {
             }
         }
 
-        // Subscribe to PiP state changes to start/stop keep-alive timer
+        // Keep the IPC watchdog running for as long as background mode is on.
+        // It used to be tied to isPiPActive, which meant the watchdog died exactly when
+        // another app stole PiP — the moment it was needed most.
         // Using DispatchQueue.main.async since we're in init() and need to defer MainActor access
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            PiPService.shared.$isPiPActive
+            BackgroundKeepAliveService.shared.$isEnabled
                 .receive(on: DispatchQueue.main)
-                .sink { [weak self] isPiPActive in
-                    if isPiPActive {
-                        self?.startPiPKeepAliveTimer()
+                .sink { [weak self] enabled in
+                    if enabled {
+                        self?.startIPCWatchdogTimer()
                     } else {
-                        self?.stopPiPKeepAliveTimer()
+                        self?.stopIPCWatchdogTimer()
                     }
                 }
                 .store(in: &self.cancellables)
         }
     }
 
-    /// When PiP is active, periodically ensure IPC server is running
-    private func startPiPKeepAliveTimer() {
-        guard pipKeepAliveTimer == nil else { return }
-        flog("App: starting PiP keep-alive timer")
+    /// While background mode is on, periodically ensure the IPC server is running.
+    ///
+    /// The 5s cadence is NOT tunable: `IPCServer.ensureRunning()` treats a gap over 10s
+    /// between calls as evidence of suspension and force-restarts the listener. Anything
+    /// slower turns that heuristic into a permanent teardown/rebuild loop, which leaves
+    /// the socket down ~1s on every tick and makes the keyboard fail to connect.
+    private func startIPCWatchdogTimer() {
+        stopIPCWatchdogTimer()
+        flog("App: starting IPC watchdog timer (5s)")
 
         let timer = DispatchSource.makeTimerSource(flags: [], queue: .main)
-        timer.schedule(deadline: .now() + 5, repeating: .seconds(5), leeway: .seconds(1))
+        timer.schedule(deadline: .now() + .seconds(5), repeating: .seconds(5), leeway: .seconds(1))
         timer.setEventHandler { [weak self] in
             self?.ipcServer.ensureRunning()
         }
         timer.resume()
-        pipKeepAliveTimer = timer
+        ipcWatchdogTimer = timer
     }
 
-    private func stopPiPKeepAliveTimer() {
-        guard pipKeepAliveTimer != nil else { return }
-        flog("App: stopping PiP keep-alive timer")
-        pipKeepAliveTimer?.cancel()
-        pipKeepAliveTimer = nil
+    private func stopIPCWatchdogTimer() {
+        guard ipcWatchdogTimer != nil else { return }
+        flog("App: stopping IPC watchdog timer")
+        ipcWatchdogTimer?.cancel()
+        ipcWatchdogTimer = nil
+    }
+
+    /// Keyboard opened/closed: keep the model hot while it is on screen.
+    @MainActor
+    private func setKeyboardActive(_ active: Bool) {
+        guard keyboardActive != active else { return }
+        keyboardActive = active
+        if active {
+            ensureModelLoadedInBackground()
+        }
+    }
+
+    private func ensureModelLoadedInBackground() {
+        guard transcriptionEngine.isModelLoaded == false, modelManager.activeModel != nil else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.transcriptionEngine.ensureModelLoaded()
+        }
     }
 
     private func beginBackgroundKeepAlive() {

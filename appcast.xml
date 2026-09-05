@@ -3,6 +3,20 @@
     <channel>
         <title>Corvin</title>
         <item>
+            <title>1.3.1</title>
+            <pubDate>Sat, 05 Sep 2026 23:18:55 +0300</pubDate>
+            <sparkle:version>202609051831</sparkle:version>
+            <sparkle:shortVersionString>1.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin-1.3.1.dmg" length="452152849" type="application/octet-stream" sparkle:edSignature="0CiEuBT4o9KoV9LoUnEHbFIxVM0kKZRCMw+/qqvr/elipH9dwFy4L7sJ3K0eOx/JpRl/MyPYaJHgRbYo338+Cg=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202609051831-202608310946.delta" sparkle:deltaFrom="202608310946" length="604798" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="lcggdlHfWz5hlrSGNj3O7n3R9wEgfcr0s23Q25JcNvm63DrB+V/aF9un5rDXUO8V0Iomm3ANrrjdBLSusvKpAQ=="/>
+                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202609051831-202608301726.delta" sparkle:deltaFrom="202608301726" length="773134" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="4fGKybYuaCyE13ez6GksLe52TM6tJlE25ybKbrr047q2CIQxw/7L4+utaL/haYsysoSJ/jRKPhP8Rp3ikO89Cw=="/>
+                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202609051831-202608181309.delta" sparkle:deltaFrom="202608181309" length="815106" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="4Yu/lC6r3d9pULA2BUDkXXu563vq5ISxWSjtmZVTfGzZBuoqg/IjCcqutnK+e53gut3W350LZhISV1p6TVTQAw=="/>
+                <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202609051831-202608181114.delta" sparkle:deltaFrom="202608181114" length="821482" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="b5IJ7lWhd3f7NdlxMrjtixL+zCFTmr030djCWiHBC+8D49MG8lDCZ30WlaqpdpdbAIpGtRSg+A8IAKTdA6ccBw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.3.0</title>
             <pubDate>Mon, 31 Aug 2026 09:51:27 +0300</pubDate>
             <sparkle:version>202608310946</sparkle:version>
@@ -26,14 +40,6 @@
                 <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608301726-202608181309.delta" sparkle:deltaFrom="202608181309" length="224050" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="7xN1dESE1B1wL16oL9xoYi853o0z6WOSFmV/RgijpOCS6E5np/E9PRjX6Zy32KzrMwjQCH7AwcMsgSlIXO2pCA=="/>
                 <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin202608301726-202608181114.delta" sparkle:deltaFrom="202608181114" length="326994" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="F97AK2MDmHetetzVkOtfQSBnIzeBaKFK6p6Ut4MCAIUhl8GhggiQoq66nn5Zt/6DRonors/jO+1E/DFmA8W7CQ=="/>
             </sparkle:deltas>
-        </item>
-        <item>
-            <title>1.2.6</title>
-            <pubDate>Sun, 30 Aug 2026 19:24:15 +0300</pubDate>
-            <sparkle:version>202608181309</sparkle:version>
-            <sparkle:shortVersionString>1.2.6</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/MrSuhov/corvin/releases/download/downloads/Corvin-1.2.6.dmg" length="451820228" type="application/octet-stream" sparkle:edSignature="SZ0F5BfANkgkGuOk+bBuh0tNd+0CG6O1CaNf42pEE2yKSdf0lpFHcsfG2+/of8xBh8QEMdouDRVdNHXDdTQzCQ=="/>
         </item>
     </channel>
 </rss>

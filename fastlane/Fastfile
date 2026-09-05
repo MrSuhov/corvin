@@ -109,10 +109,20 @@ platform :ios do
       destination: "generic/platform=iOS",
       output_directory: output_dir,
       output_name: "CorviniOS.ipa",
-      xcargs: "-allowProvisioningUpdates -authenticationKeyPath '#{api_key_path}' -authenticationKeyID '#{ENV["ASC_KEY_ID"]}' -authenticationKeyIssuerID '#{ENV["ASC_ISSUER_ID"]}' CURRENT_PROJECT_VERSION=#{new_build}",
+      # NOTE: -allowProvisioningUpdates is deliberately absent. On an ephemeral
+      # runner it makes Xcode mint a fresh "Created via API" Apple Development
+      # certificate on every run and abandon it; ten of those accumulated and the
+      # account hit Apple's certificate cap, which broke every build after
+      # 2026-08-08. The App Store profiles are installed by the workflow instead,
+      # so nothing needs to be created at build time.
+      xcargs: "-authenticationKeyPath '#{api_key_path}' -authenticationKeyID '#{ENV["ASC_KEY_ID"]}' -authenticationKeyIssuerID '#{ENV["ASC_ISSUER_ID"]}' CURRENT_PROJECT_VERSION=#{new_build}",
       export_options: {
-        signingStyle: "automatic",
+        signingStyle: "manual",
         teamID: ENV["DEVELOPMENT_TEAM"],
+        provisioningProfiles: {
+          "com.corvinvoice.ios" => "Corvin iOS App Store CI",
+          "com.corvinvoice.ios.keyboard" => "Corvin Keyboard App Store CI",
+        },
       },
     )
 

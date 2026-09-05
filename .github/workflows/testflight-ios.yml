@@ -65,6 +65,27 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
+      - name: Install provisioning profiles
+        env:
+          IOS_PROFILE_APP: ${{ secrets.IOS_PROFILE_APP }}
+          IOS_PROFILE_KEYBOARD: ${{ secrets.IOS_PROFILE_KEYBOARD }}
+        run: |
+          # App Store profiles for both bundle ids, so signing never has to create
+          # anything at build time (see the note in fastlane/Fastfile).
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          install_profile() {
+            local content="$1" tmp uuid
+            tmp=$(mktemp)
+            echo "$content" | base64 --decode > "$tmp"
+            uuid=$(security cms -D -i "$tmp" | plutil -extract UUID raw -)
+            cp "$tmp" "$PROFILE_DIR/$uuid.mobileprovision"
+            echo "installed $uuid"
+            rm -f "$tmp"
+          }
+          install_profile "$IOS_PROFILE_APP"
+          install_profile "$IOS_PROFILE_KEYBOARD"
+
       - name: Build & Upload to TestFlight
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

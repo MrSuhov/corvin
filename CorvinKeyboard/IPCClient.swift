@@ -142,7 +142,9 @@ class IPCClient {
             submitResponse = try JSONDecoder().decode(IPCSubmitResponse.self, from: data)
         } catch {
             flog("IPC submit decode failed: \(error.localizedDescription)")
-            throw IPCError.serverError("POST decode failed: \(error.localizedDescription)")
+            // This reaches the keyboard toolbar, so it has to be a sentence a user
+            // can act on rather than the decoder's own words.
+            throw IPCError.serverError("keyboard.error.badResponse".localized)
         }
 
         flog("IPC submitted, id=\(submitResponse.id.prefix(8))...")
@@ -219,7 +221,7 @@ enum IPCError: LocalizedError {
     /// Shown whenever the host app is not reachable. The keyboard extension cannot launch
     /// it (extensions have no UIApplication), so the user has to open it once — after that
     /// background mode is persisted and re-arms itself.
-    static let hostAsleepMessage = "Corvin не в фоне. Откройте приложение один раз — дальше фон включится сам."
+    static var hostAsleepMessage: String { "keyboard.error.hostAsleep".localized }
 
     var errorDescription: String? {
         switch self {

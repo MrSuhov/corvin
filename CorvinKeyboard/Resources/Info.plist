@@ -4,6 +4,14 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Corvin</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ru</string>
+		<string>es</string>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -39,8 +47,6 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).KeyboardViewController</string>
 	</dict>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Corvin Keyboard использует микрофон для транскрипции речи в текст.</string>
 	<key>RequestsOpenAccess</key>
 	<true/>
 </dict>

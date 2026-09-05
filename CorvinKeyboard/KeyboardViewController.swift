@@ -25,9 +25,17 @@ class KeyboardViewController: KeyboardInputViewController {
 
         pttController = PTTController(textDocumentProxy: textDocumentProxy)
 
-        // Read enabled languages from settings
-        let defaults = UserDefaults(suiteName: "group.com.corvinvoice.app")
-        let languagesString = defaults?.string(forKey: "keyboardLanguages") ?? "en,ru"
+        let defaults = UserDefaults(suiteName: SharedDefaults.appGroup)
+
+        // Follow the UI language chosen in the app. The extension is a separate
+        // binary with its own bundle, so it has to apply this itself; it is also
+        // torn down and rebuilt constantly, which is why reading once here is
+        // enough — there is no long-lived instance to keep in sync.
+        let appLanguage = defaults?.string(forKey: SharedDefaults.appLanguage) ?? ""
+        Bundle.setLanguage(appLanguage)
+
+        // Read enabled input languages from settings
+        let languagesString = defaults?.string(forKey: SharedDefaults.keyboardLanguages) ?? "en,ru"
         let enabledLanguages = languagesString.split(separator: ",").map { String($0) }
 
         // Configure available locales based on settings

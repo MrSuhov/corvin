@@ -26,7 +26,7 @@ class PiPService: NSObject, ObservableObject {
 
     @Published var isPiPActive = false
     @Published var isPiPPossible = false
-    @Published var errorMessage: String?
+    @Published var errorMessage: LocalizedMessage?
 
     private var sampleBufferLayer: AVSampleBufferDisplayLayer?
     private var pipController: AVPictureInPictureController?
@@ -77,7 +77,7 @@ class PiPService: NSObject, ObservableObject {
         flog("PiP supported: \(isSupported)")
 
         guard isSupported else {
-            errorMessage = "PiP не поддерживается"
+            errorMessage = LocalizedMessage("pip.error.unsupported")
             return
         }
 
@@ -106,7 +106,7 @@ class PiPService: NSObject, ObservableObject {
 
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
             flog("No window scene")
-            errorMessage = "Нет окна"
+            errorMessage = LocalizedMessage("pip.error.noWindow")
             return
         }
 
@@ -638,7 +638,7 @@ final class PiPService: ObservableObject {
 
     @Published var isPiPActive = false
     @Published var isPiPPossible = false
-    @Published var errorMessage: String?
+    @Published var errorMessage: LocalizedMessage?
 
     private init() {}
 

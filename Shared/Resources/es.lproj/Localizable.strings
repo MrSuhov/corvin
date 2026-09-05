@@ -1,5 +1,5 @@
 /*
-  Localizable.strings (English)
+  Localizable.strings (Spanish)
   Corvin
 */
 
@@ -258,53 +258,53 @@
 "models.refresh" = "Refresh";
 
 // MARK: - iOS Tabs
-"tab.record" = "Record";
-"tab.models" = "Models";
-"tab.settings" = "Settings";
-"tab.history" = "History";
+"tab.record" = "Grabar";
+"tab.models" = "Modelos";
+"tab.settings" = "Ajustes";
+"tab.history" = "Historial";
 
 // MARK: - iOS Status Rows
-"status.ipcServer" = "IPC server";
-"status.running" = "running";
-"status.stopped" = "stopped";
-"status.keyboard" = "Keyboard";
-"status.keyboard.checkSettings" = "Check in iOS Settings";
-"status.model" = "Model";
-"status.model.notLoaded" = "not loaded";
+"status.ipcServer" = "Servidor IPC";
+"status.running" = "activo";
+"status.stopped" = "detenido";
+"status.keyboard" = "Teclado";
+"status.keyboard.checkSettings" = "Compruébalo en Ajustes de iOS";
+"status.model" = "Modelo";
+"status.model.notLoaded" = "no cargado";
 
 // MARK: - iOS Keyboard Setup
-"keyboardSetup.title" = "Setting up the keyboard";
-"keyboardSetup.step1" = "Open Settings → General → Keyboard → Keyboards";
-"keyboardSetup.step2" = "Tap “Add New Keyboard”";
-"keyboardSetup.step3" = "Choose “Corvin Keyboard”";
-"keyboardSetup.step4" = "Turn on “Allow Full Access”";
-"keyboardSetup.openSettings" = "Open Settings";
+"keyboardSetup.title" = "Configurar el teclado";
+"keyboardSetup.step1" = "Abre Ajustes → General → Teclado → Teclados";
+"keyboardSetup.step2" = "Toca «Añadir teclado»";
+"keyboardSetup.step3" = "Elige «Corvin Keyboard»";
+"keyboardSetup.step4" = "Activa «Permitir acceso completo»";
+"keyboardSetup.openSettings" = "Abrir Ajustes";
 
 // MARK: - iOS Background Mode
-"background.title" = "Background mode";
-"background.recovering" = "Recovering…";
-"background.active" = "Active";
-"background.active.audio" = "Active (audio)";
-"background.active.audioAndPiP" = "Active (audio + PiP window)";
-"background.pipUnavailable" = "Picture in Picture is unavailable on this device — background mode is held by the audio channel alone.";
-"background.explanation.pip" = "Leave it on — Corvin remembers the setting and re-arms background mode on every launch, including after another app has taken the Picture in Picture window.\\n\\nThe microphone is not on continuously: it is activated only while you hold the microphone key.";
-"background.explanation" = "Leave it on — Corvin remembers the setting and re-arms background mode on every launch.\\n\\nThe microphone is not on continuously: it is activated only while you hold the microphone key.";
+"background.title" = "Modo en segundo plano";
+"background.recovering" = "Recuperando…";
+"background.active" = "Activo";
+"background.active.audio" = "Activo (audio)";
+"background.active.audioAndPiP" = "Activo (audio + ventana PiP)";
+"background.pipUnavailable" = "La imagen dentro de imagen no está disponible en este dispositivo: el modo en segundo plano se mantiene solo con el canal de audio.";
+"background.explanation.pip" = "Déjalo activado: Corvin recuerda el ajuste y reactiva el modo en segundo plano en cada arranque, incluso después de que otra app ocupe la ventana de imagen dentro de imagen.\\n\\nEl micrófono no está encendido de forma continua: se activa solo mientras mantienes pulsada la tecla del micrófono.";
+"background.explanation" = "Déjalo activado: Corvin recuerda el ajuste y reactiva el modo en segundo plano en cada arranque.\\n\\nEl micrófono no está encendido de forma continua: se activa solo mientras mantienes pulsada la tecla del micrófono.";
 
 // MARK: - iOS Recording and Files
-"record.test.title" = "Recording test";
-"record.hint" = "Hold the button to record. The recognised text is copied to the clipboard.";
-"record.recording" = "Recording…";
-"record.transcribing" = "Transcribing…";
-"file.transcribe.title" = "Transcribe a file";
-"file.transcribe.pick" = "Choose file";
-"logs.title" = "Logs (last 200)";
+"record.test.title" = "Prueba de grabación";
+"record.hint" = "Mantén pulsado el botón para grabar. El texto reconocido se copia al portapapeles.";
+"record.recording" = "Grabando…";
+"record.transcribing" = "Transcribiendo…";
+"file.transcribe.title" = "Transcribir un archivo";
+"file.transcribe.pick" = "Elegir archivo";
+"logs.title" = "Registros (últimos 200)";
 
 // MARK: - Keyboard Extension
 "common.duration.seconds" = "%.1f s";
 
 // MARK: - Background and PiP Errors
-"background.error.audio" = "Audio error: %@";
-"background.error.setupFailed" = "Could not set up background mode";
-"background.error.generic" = "Background mode error: %@";
-"pip.error.unsupported" = "Picture in Picture is not supported";
-"pip.error.noWindow" = "No window available";
+"background.error.audio" = "Error de audio: %@";
+"background.error.setupFailed" = "No se pudo preparar el modo en segundo plano";
+"background.error.generic" = "Error del modo en segundo plano: %@";
+"pip.error.unsupported" = "La imagen dentro de imagen no es compatible";
+"pip.error.noWindow" = "No hay ventana disponible";

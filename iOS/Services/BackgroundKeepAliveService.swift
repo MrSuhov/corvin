@@ -30,7 +30,9 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
 
     /// True while the silent player is actually rendering audio.
     @Published private(set) var isHoldingProcess = false
-    @Published private(set) var errorMessage: String?
+    /// Held as a key, not as finished text: this banner stays on screen, so a
+    /// language switch has to re-render it rather than freeze the old language.
+    @Published private(set) var errorMessage: LocalizedMessage?
 
     private let defaults: UserDefaults
 
@@ -72,7 +74,7 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
             return true
         } catch {
             flog("KeepAlive: audio session error: \(error)")
-            errorMessage = "Ошибка аудио: \(error.localizedDescription)"
+            errorMessage = LocalizedMessage("background.error.audio", error.localizedDescription)
             return false
         }
     }
@@ -149,7 +151,7 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
 
         if player == nil {
             guard let url = makeQuietLoopFile() else {
-                errorMessage = "Не удалось подготовить фоновый режим"
+                errorMessage = LocalizedMessage("background.error.setupFailed")
                 return
             }
             do {
@@ -162,7 +164,7 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
                 player = newPlayer
             } catch {
                 flog("KeepAlive: player init failed: \(error)")
-                errorMessage = "Ошибка фонового режима: \(error.localizedDescription)"
+                errorMessage = LocalizedMessage("background.error.generic", error.localizedDescription)
                 return
             }
         }

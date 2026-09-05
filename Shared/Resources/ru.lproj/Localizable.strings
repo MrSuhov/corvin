@@ -256,3 +256,55 @@
 "models.new.tag" = "НОВАЯ";
 "models.new.banner" = "Доступны новые модели: %d";
 "models.refresh" = "Обновить список";
+
+// MARK: - iOS Tabs
+"tab.record" = "Запись";
+"tab.models" = "Модели";
+"tab.settings" = "Настройки";
+"tab.history" = "История";
+
+// MARK: - iOS Status Rows
+"status.ipcServer" = "IPC сервер";
+"status.running" = "работает";
+"status.stopped" = "остановлен";
+"status.keyboard" = "Клавиатура";
+"status.keyboard.checkSettings" = "Проверьте в Настройках iOS";
+"status.model" = "Модель";
+"status.model.notLoaded" = "не загружена";
+
+// MARK: - iOS Keyboard Setup
+"keyboardSetup.title" = "Установка клавиатуры";
+"keyboardSetup.step1" = "Откройте Настройки → Основные → Клавиатура → Клавиатуры";
+"keyboardSetup.step2" = "Нажмите «Новые клавиатуры»";
+"keyboardSetup.step3" = "Выберите «Corvin Keyboard»";
+"keyboardSetup.step4" = "Включите «Полный доступ»";
+"keyboardSetup.openSettings" = "Открыть Настройки";
+
+// MARK: - iOS Background Mode
+"background.title" = "Работа в фоне";
+"background.recovering" = "Восстанавливается…";
+"background.active" = "Активен";
+"background.active.audio" = "Активен (звук)";
+"background.active.audioAndPiP" = "Активен (звук + окно PiP)";
+"background.pipUnavailable" = "Окно «картинка в картинке» на этом устройстве недоступно — фон держится только звуковым каналом.";
+"background.explanation.pip" = "Оставьте включённым — Corvin запомнит настройку и будет сам поднимать фоновый режим при каждом запуске, в том числе после того, как другое приложение заняло окно «картинка в картинке».\\n\\nМикрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.";
+"background.explanation" = "Оставьте включённым — Corvin запомнит настройку и будет сам поднимать фоновый режим при каждом запуске.\\n\\nМикрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.";
+
+// MARK: - iOS Recording and Files
+"record.test.title" = "Тест записи";
+"record.hint" = "Удерживайте кнопку для записи. Распознанный текст будет скопирован в буфер обмена.";
+"record.recording" = "Запись…";
+"record.transcribing" = "Транскрипция…";
+"file.transcribe.title" = "Транскрипция файла";
+"file.transcribe.pick" = "Выбрать файл";
+"logs.title" = "Логи (последние 200)";
+
+// MARK: - Keyboard Extension
+"common.duration.seconds" = "%.1f с";
+
+// MARK: - Background and PiP Errors
+"background.error.audio" = "Ошибка аудио: %@";
+"background.error.setupFailed" = "Не удалось подготовить фоновый режим";
+"background.error.generic" = "Ошибка фонового режима: %@";
+"pip.error.unsupported" = "PiP не поддерживается";
+"pip.error.noWindow" = "Нет окна";

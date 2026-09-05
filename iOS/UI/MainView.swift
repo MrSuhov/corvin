@@ -13,15 +13,17 @@ struct MainView: View {
                 .environmentObject(appState)
                 .tabItem {
                     Image(systemName: "mic.fill")
-                    Text("Запись")
+                    Text("tab.record".localized)
                 }
+                .accessibilityIdentifier("tab.record")
 
             iOSModelManagerView()
                 .environmentObject(modelManager)
                 .tabItem {
                     Image(systemName: "cpu")
-                    Text("Модели")
+                    Text("tab.models".localized)
                 }
+                .accessibilityIdentifier("tab.models")
                 // Quiet nudge that the remote catalogue grew; cleared as soon as
                 // the list is opened.
                 .badge(modelManager.unseenModelIDs.isEmpty ? 0 : modelManager.unseenModelIDs.count)
@@ -29,15 +31,17 @@ struct MainView: View {
             iOSSettingsView()
                 .tabItem {
                     Image(systemName: "gear")
-                    Text("Настройки")
+                    Text("tab.settings".localized)
                 }
+                .accessibilityIdentifier("tab.settings")
 
             iOSHistoryView()
                 .environmentObject(historyStore)
                 .tabItem {
                     Image(systemName: "clock")
-                    Text("История")
+                    Text("tab.history".localized)
                 }
+                .accessibilityIdentifier("tab.history")
         }
     }
 }
@@ -59,13 +63,13 @@ struct StatusView: View {
                     VStack(spacing: 12) {
                     modelStatusRow
                     StatusRow(
-                        title: "IPC сервер",
-                        value: appState.ipcServerRunning ? "работает" : "остановлен",
+                        title: "status.ipcServer".localized,
+                        value: (appState.ipcServerRunning ? "status.running" : "status.stopped").localized,
                         isOK: appState.ipcServerRunning
                     )
                     StatusRow(
-                        title: "Клавиатура",
-                        value: "Проверьте в Настройках iOS",
+                        title: "status.keyboard".localized,
+                        value: "status.keyboard.checkSettings".localized,
                         isOK: true
                     )
                 }
@@ -78,18 +82,18 @@ struct StatusView: View {
                     HStack {
                         Image(systemName: "keyboard")
                             .foregroundColor(.blue)
-                        Text("Установка клавиатуры")
+                        Text("keyboardSetup.title".localized)
                             .fontWeight(.medium)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
-                        instructionRow(number: 1, text: "Откройте Настройки → Основные → Клавиатура → Клавиатуры")
-                        instructionRow(number: 2, text: "Нажмите «Новые клавиатуры»")
-                        instructionRow(number: 3, text: "Выберите «Corvin Keyboard»")
-                        instructionRow(number: 4, text: "Включите «Полный доступ»")
+                        instructionRow(number: 1, text: "keyboardSetup.step1".localized)
+                        instructionRow(number: 2, text: "keyboardSetup.step2".localized)
+                        instructionRow(number: 3, text: "keyboardSetup.step3".localized)
+                        instructionRow(number: 4, text: "keyboardSetup.step4".localized)
                     }
 
-                    Button("Открыть Настройки") {
+                    Button("keyboardSetup.openSettings".localized) {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
                         }
@@ -115,7 +119,7 @@ struct StatusView: View {
                             Image(systemName: "waveform.circle.fill")
                                 .foregroundColor(.blue)
                             #endif
-                            Text("Работа в фоне")
+                            Text("background.title".localized)
                                 .fontWeight(.medium)
                         }
                     }
@@ -124,14 +128,14 @@ struct StatusView: View {
                         HStack(spacing: 6) {
                             Image(systemName: keepAlive.isHoldingProcess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                                 .foregroundColor(keepAlive.isHoldingProcess ? .green : .orange)
-                            Text(keepAlive.isHoldingProcess ? holdingDescription : "Восстанавливается…")
+                            Text(keepAlive.isHoldingProcess ? holdingDescription : "background.recovering".localized)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
 
                     if let error = keepAlive.errorMessage ?? pipService.errorMessage {
-                        Text(error)
+                        Text(error.text)
                             .font(.caption)
                             .foregroundColor(.orange)
                             .fixedSize(horizontal: false, vertical: true)
@@ -139,18 +143,18 @@ struct StatusView: View {
 
                     #if PIP_KEEPALIVE
                     if !pipService.isPiPPossible {
-                        Text("Окно «картинка в картинке» на этом устройстве недоступно — фон держится только звуковым каналом.")
+                        Text("background.pipUnavailable".localized)
                             .font(.caption)
                             .foregroundColor(.orange)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Text("Оставьте включённым — Corvin запомнит настройку и будет сам поднимать фоновый режим при каждом запуске, в том числе после того, как другое приложение заняло окно «картинка в картинке».\n\nМикрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.")
+                    Text("background.explanation.pip".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     #else
-                    Text("Оставьте включённым — Corvin запомнит настройку и будет сам поднимать фоновый режим при каждом запуске.\n\nМикрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.")
+                    Text("background.explanation".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -163,7 +167,7 @@ struct StatusView: View {
 
                 // PTT test button
                 VStack(spacing: 8) {
-                    Text("Тест записи")
+                    Text("record.test.title".localized)
                         .font(.headline)
 
                     PTTButton(
@@ -179,7 +183,7 @@ struct StatusView: View {
                 Divider()
 
                 VStack(spacing: 12) {
-                    Text("Транскрипция файла")
+                    Text("file.transcribe.title".localized)
                         .font(.headline)
 
                     Text("OGG (Telegram), WAV, M4A, MP3, AIFF")
@@ -189,7 +193,7 @@ struct StatusView: View {
                     Button {
                         showingFilePicker = true
                     } label: {
-                        Label("Выбрать файл", systemImage: "doc.badge.plus")
+                        Label("file.transcribe.pick".localized, systemImage: "doc.badge.plus")
                     }
                     .buttonStyle(.borderedProminent)
 
@@ -228,9 +232,9 @@ struct StatusView: View {
 
     private var holdingDescription: String {
         #if PIP_KEEPALIVE
-        return pipService.isPiPActive ? "Активен (звук + окно PiP)" : "Активен (звук)"
+        return (pipService.isPiPActive ? "background.active.audioAndPiP" : "background.active.audio").localized
         #else
-        return "Активен"
+        return "background.active".localized
         #endif
     }
 
@@ -238,14 +242,14 @@ struct StatusView: View {
     private var modelStatusRow: some View {
         if let activeModel = modelManager.activeModel {
             // Model is loaded and ready
-            StatusRow(title: "Модель", value: activeModel.name, isOK: true)
+            StatusRow(title: "status.model".localized, value: activeModel.name, isOK: true)
         } else if let downloadingModel = modelManager.models.first(where: { modelManager.downloadTasks[$0.id] != nil }) {
             // Model is being downloaded
             let progress = downloadingModel.downloadProgress
             HStack {
                 Image(systemName: "arrow.down.circle.fill")
                     .foregroundColor(.blue)
-                Text("Модель")
+                Text("status.model".localized)
                     .fontWeight(.medium)
                 Spacer()
                 Text("\(downloadingModel.name) — \(Int(progress * 100))%")
@@ -253,7 +257,7 @@ struct StatusView: View {
             }
         } else {
             // No model loaded, no download in progress
-            StatusRow(title: "Модель", value: "не загружена", isOK: false)
+            StatusRow(title: "status.model".localized, value: "status.model.notLoaded".localized, isOK: false)
         }
     }
 
@@ -261,14 +265,14 @@ struct StatusView: View {
     private var stateText: some View {
         switch sessionManager.state {
         case .idle:
-            Text("Удерживайте кнопку для записи. Распознанный текст будет скопирован в буфер обмена.")
+            Text("record.hint".localized)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         case .recording:
-            Text("Запись...")
+            Text("record.recording".localized)
                 .foregroundColor(.red)
         case .transcribing:
-            ProgressView("Транскрипция...")
+            ProgressView("record.transcribing".localized)
         case .done(let text):
             Text(text)
                 .padding()
@@ -354,7 +358,7 @@ struct LogView: View {
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .navigationTitle("Логи (последние 200)")
+        .navigationTitle("logs.title".localized)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {

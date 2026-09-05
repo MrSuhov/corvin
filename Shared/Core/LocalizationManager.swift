@@ -15,9 +15,12 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case system = ""
     case english = "en"
     case russian = "ru"
+    case spanish = "es"
 
     var id: String { rawValue }
 
+    /// Language names stay in their own language — an endonym is what a speaker
+    /// looks for in a picker, so these are deliberately not localized.
     var displayName: String {
         switch self {
         case .system:
@@ -26,6 +29,8 @@ enum AppLanguage: String, CaseIterable, Identifiable {
             return "English"
         case .russian:
             return "Русский"
+        case .spanish:
+            return "Español"
         }
     }
 }
@@ -86,10 +91,10 @@ struct KeyboardLanguage: Identifiable, Hashable, Codable {
 final class LocalizationManager: ObservableObject {
     static let shared = LocalizationManager()
 
-    /// Key for storing selected app language in UserDefaults
-    private static let appLanguageKey = "appLanguage"
-    /// Key for storing enabled keyboard languages in UserDefaults (legacy comma-separated format for keyboard extension)
-    private static let keyboardLanguagesKey = "keyboardLanguages"
+    /// Both keys and the suite name live in `SharedDefaults` so the keyboard
+    /// extension reads exactly what the app writes.
+    private static let appLanguageKey = SharedDefaults.appLanguage
+    private static let keyboardLanguagesKey = SharedDefaults.keyboardLanguages
 
     /// Currently selected app language (empty string = system)
     @Published var currentLanguage: String {
@@ -110,21 +115,20 @@ final class LocalizationManager: ObservableObject {
         }
     }
 
-    private var userDefaults: UserDefaults {
+    private var userDefaults: UserDefaults { Self.defaults }
+
+    /// App Group on iOS so the keyboard extension sees the same values; plain
+    /// standard defaults on macOS, which has no extension to share with.
+    static var defaults: UserDefaults {
         #if os(iOS)
-        return UserDefaults(suiteName: "group.com.corvinvoice.app") ?? .standard
+        return UserDefaults(suiteName: SharedDefaults.appGroup) ?? .standard
         #else
         return .standard
         #endif
     }
 
     private init() {
-        // Use app group on iOS for sharing settings with keyboard extension
-        #if os(iOS)
-        let defaults = UserDefaults(suiteName: "group.com.corvinvoice.app") ?? .standard
-        #else
-        let defaults = UserDefaults.standard
-        #endif
+        let defaults = Self.defaults
 
         // Load saved language or use system default
         let savedLanguage = defaults.string(forKey: Self.appLanguageKey) ?? ""
@@ -181,38 +185,61 @@ final class LocalizationManager: ObservableObject {
     }
 }
 
-// MARK: - Bundle Extension for Runtime Language Switching
+// MARK: - Runtime Language Switching
 
-private var bundleKey: UInt8 = 0
+/// Holds the bundle that `String.localized` resolves against.
+///
+/// This used to hang the bundle off `Bundle.main` with `objc_setAssociatedObject`,
+/// and a `defer` block cleared it on *every* exit path — including the success
+/// path, one instruction after it was set. The picker therefore never changed
+/// anything, which is what the old "restart required" caption was papering over.
+/// A plain holder is both correct and legible.
+enum LocalizedBundle {
+    private static let lock = NSLock()
+    private static var _bundle: Bundle = .main
+    private static var _locale: Locale = .current
 
-extension Bundle {
-    /// Set the app's language at runtime
-    static func setLanguage(_ language: String) {
-        defer {
-            // Reset cached bundle
-            objc_setAssociatedObject(Bundle.main, &bundleKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        }
-
-        // Empty string means use system language
-        guard !language.isEmpty else {
-            objc_setAssociatedObject(Bundle.main, &bundleKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-            return
-        }
-
-        guard let path = Bundle.main.path(forResource: language, ofType: "lproj"),
-              let bundle = Bundle(path: path) else {
-            return
-        }
-
-        objc_setAssociatedObject(Bundle.main, &bundleKey, bundle, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    /// Bundle for string lookup. Falls back to `.main`, i.e. the system language.
+    static var current: Bundle {
+        lock.lock(); defer { lock.unlock() }
+        return _bundle
     }
 
-    /// Get the localized bundle (either custom or main)
-    static var localizedBundle: Bundle {
-        if let bundle = objc_getAssociatedObject(Bundle.main, &bundleKey) as? Bundle {
-            return bundle
+    /// Locale matching the chosen language, not the device's. Needed for
+    /// `String(format:locale:)`: plural rules and the decimal separator have to
+    /// follow the language on screen.
+    static var locale: Locale {
+        lock.lock(); defer { lock.unlock() }
+        return _locale
+    }
+
+    /// - Parameter language: language code, or "" to follow the system.
+    static func set(language: String) {
+        lock.lock(); defer { lock.unlock() }
+
+        guard !language.isEmpty else {
+            _bundle = .main
+            _locale = .current
+            return
         }
-        return Bundle.main
+        guard let path = Bundle.main.path(forResource: language, ofType: "lproj"),
+              let bundle = Bundle(path: path) else {
+            // Silence here is how a mis-wired target looks: the picker appears to
+            // work and changes nothing. Say so instead.
+            flog("Localization: no \(language).lproj in \(Bundle.main.bundleIdentifier ?? "?") — language switch is a no-op")
+            _bundle = .main
+            _locale = .current
+            return
+        }
+        _bundle = bundle
+        _locale = Locale(identifier: language)
+    }
+}
+
+extension Bundle {
+    /// Kept as the call-site spelling used across the app and the keyboard extension.
+    static func setLanguage(_ language: String) {
+        LocalizedBundle.set(language: language)
     }
 }
 
@@ -221,24 +248,44 @@ extension Bundle {
 extension String {
     /// Returns the localized version of this string
     var localized: String {
-        NSLocalizedString(self, bundle: Bundle.localizedBundle, comment: "")
+        let value = NSLocalizedString(self, bundle: LocalizedBundle.current, comment: "")
+        #if DEBUG
+        if value == self, self.contains(".") {
+            flog("Localization: missing key '\(self)' in \(LocalizedBundle.current.bundlePath)")
+        }
+        #endif
+        return value
     }
 
-    /// Returns the localized version with arguments
+    /// Returns the localized version with arguments.
+    ///
+    /// The `locale:` argument is not optional in practice: without it `.stringsdict`
+    /// plural templates are returned verbatim (`%#@count@` on screen), and `%f`
+    /// renders with a POSIX decimal point in languages that use a comma.
     func localized(with arguments: CVarArg...) -> String {
-        String(format: self.localized, arguments: arguments)
+        String(format: self.localized, locale: LocalizedBundle.locale, arguments: arguments)
     }
 }
 
-// MARK: - SwiftUI Environment Support
+// MARK: - Deferred Messages
 
-private struct LocalizationManagerKey: EnvironmentKey {
-    static let defaultValue = LocalizationManager.shared
-}
+/// A message held as a key rather than as finished text.
+///
+/// Anything stored in view-model state outlives the language it was created in:
+/// resolving at assignment time freezes an error banner in the old language for
+/// as long as it stays on screen. Resolving in `text` at render time does not.
+struct LocalizedMessage: Equatable {
+    let key: String
+    let args: [String]
 
-extension EnvironmentValues {
-    var localizationManager: LocalizationManager {
-        get { self[LocalizationManagerKey.self] }
-        set { self[LocalizationManagerKey.self] = newValue }
+    init(_ key: String, _ args: String...) {
+        self.key = key
+        self.args = args
+    }
+
+    var text: String {
+        args.isEmpty
+            ? key.localized
+            : String(format: key.localized, locale: LocalizedBundle.locale, arguments: args)
     }
 }

@@ -1,0 +1,15 @@
+/*
+  Localizable.strings (English)
+  Corvin Keyboard
+
+  The extension is a separate bundle: inside an app extension Bundle.main is
+  the appex, so it cannot read the host app's catalogue and needs its own.
+  Only the handful of keys the keyboard actually renders live here.
+*/
+
+"common.duration.seconds" = "%.1f s";
+"keyboard.status.releaseToTranscribe" = "Release to transcribe";
+"keyboard.status.connecting" = "Connecting to Corvin…";
+"keyboard.status.transcribing" = "Transcribing…";
+"keyboard.error.hostAsleep" = "Corvin is not running in the background. Open the app once — after that it re-arms itself.";
+"keyboard.error.badResponse" = "Corvin returned an unexpected response. Please try again.";

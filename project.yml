@@ -164,10 +164,21 @@ targets:
           - "**/*.md"
       - path: Shared/Networking
       - path: Shared/Core/FileLogger.swift
+      # Without this the extension has no `String.localized` at all — it is a
+      # separate binary, so the host app compiling it does not help.
+      - path: Shared/Core/LocalizationManager.swift
     resources:
       # Required-reason API declaration; the extension needs its own copy, the
       # host app's manifest does not cover it.
       - path: CorvinKeyboard/Resources/PrivacyInfo.xcprivacy
+      # The extension needs its own catalogue: inside an app extension
+      # `Bundle.main` is the appex, so it cannot read the host app's strings.
+      # XcodeGen also assigns each path to a single target, so Shared/Resources
+      # cannot simply be listed here as well. Only the keys the keyboard renders
+      # live in these files.
+      - path: CorvinKeyboard/Resources/en.lproj
+      - path: CorvinKeyboard/Resources/ru.lproj
+      - path: CorvinKeyboard/Resources/es.lproj
     dependencies:
       - package: KeyboardKit
     settings:

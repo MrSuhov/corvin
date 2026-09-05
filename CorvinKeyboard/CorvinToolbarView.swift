@@ -25,7 +25,7 @@ struct CorvinToolbarView: View {
                 Circle()
                     .fill(Color.red)
                     .frame(width: 8, height: 8)
-                Text(String(format: "%.1fс", pttController.recordingDuration))
+                Text(String(format: "common.duration.seconds".localized, pttController.recordingDuration))
                     .font(.caption.monospacedDigit())
                     .foregroundColor(.white)
             }
@@ -34,19 +34,19 @@ struct CorvinToolbarView: View {
             .background(Color.red.opacity(0.8))
             .cornerRadius(12)
 
-            Text("Отпустите для транскрипции")
+            Text("keyboard.status.releaseToTranscribe".localized)
                 .font(.caption)
                 .foregroundColor(.secondary)
         } else if pttController.isStarting {
             ProgressView()
                 .scaleEffect(0.7)
-            Text("Подключение к Corvin…")
+            Text("keyboard.status.connecting".localized)
                 .font(.caption)
                 .foregroundColor(.secondary)
         } else if pttController.isTranscribing {
             ProgressView()
                 .scaleEffect(0.7)
-            Text("Транскрипция…")
+            Text("keyboard.status.transcribing".localized)
                 .font(.caption)
                 .foregroundColor(.secondary)
         } else if let error = pttController.lastError {

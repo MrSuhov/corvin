@@ -44,4 +44,9 @@ enum SharedDefaults {
     /// Unix timestamp refreshed by the host's keep-alive watchdog. The keyboard reads it
     /// to tell "host is asleep" apart from "the request happened to fail".
     static let hostAliveAt = "hostAliveAt"
+    /// UI language chosen in the app ("" = follow the system). The keyboard extension
+    /// reads it so its own strings come up in the same language as the app.
+    static let appLanguage = "appLanguage"
+    /// Comma-separated input locales for the keyboard, e.g. "en,ru". Legacy format.
+    static let keyboardLanguages = "keyboardLanguages"
 }

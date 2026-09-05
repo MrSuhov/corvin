@@ -32,8 +32,8 @@ final class AppStoreScreenshotTests: XCTestCase {
     /// having to drive Safari or Notes.
     func testCaptureKeyboard() throws {
         // The globe is tapped by position: it belongs to the keyboard process
-        // and its accessibility label is localised. The offsets are calibrated
-        // per idiom against the bottom-left key of the system keyboard.
+        // and its accessibility label is localised. The offset is calibrated
+        // against the bottom-left key of the system keyboard on iPhone.
         try XCTSkipIf(isPad, "globe offset is calibrated for iPhone only")
 
         tap(tab: .history)
@@ -44,37 +44,35 @@ final class AppStoreScreenshotTests: XCTestCase {
         }
         search.tap()
 
-        // Waited for, not slept through. The globe is tapped by screen
-        // position, and that position is inside the tab bar when no keyboard is
-        // covering it: with a bare sleep, a keyboard that came up late meant the
-        // tap selected a tab instead, and the capture 15 seconds later was of an
-        // ordinary app screen filed as 01-keyboard.png.
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 20),
-                      "software keyboard did not come up for the search field")
-
-        // The system keyboard comes up first; the globe key cycles to the next
-        // installed one. .GlobalPreferences lists Corvin immediately after the
-        // system keyboard for the language being captured, so a single tap
-        // lands on it.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.067, dy: 0.958)).tap()
-
-        // Nothing here can be waited on properly: the keys belong to the
-        // keyboard process and are not exposed to this query tree, and
-        // XCUIApplication reports no state for an app extension. So this is a
-        // plain wait, sized for the worst case — the extension is launched on
-        // demand and the first switch after an install cold-starts KeyboardKit,
-        // which took over six seconds on a freshly booted simulator and caught
-        // the system keyboard mid-switch.
+        // Waited for, not slept through. The globe is tapped by screen position,
+        // and that position is inside the tab bar when no keyboard covers it: a
+        // keyboard that came up late meant the tap selected a tab, and the
+        // capture was of an ordinary app screen filed as 01-keyboard.png.
         //
-        // Check the captured file: Corvin's layout is the one with the blue
-        // microphone key and the locale key next to "123".
-        sleep(15)
+        // `app.keys` rather than `app.keyboards`: a keyboard extension runs in
+        // its own process, which the latter does not see, though its keys are in
+        // the query tree all the same.
+        XCTAssertTrue(app.keys.firstMatch.waitForExistence(timeout: 20),
+                      "no keyboard came up for the search field")
 
-        // The other half of the same trap: if the globe tap missed the keyboard
-        // it landed on the tab bar, and the capture below would quietly be of
-        // whatever tab that selected.
-        XCTAssertTrue(app.tabBars.buttons.element(boundBy: Tab.history.position).isSelected,
-                      "the globe tap fell through to the tab bar")
+        // iOS opens whichever keyboard was used last, and that outlives a
+        // reboot, so Corvin's may already be showing or may be a globe tap or
+        // two away. Cycle until its push-to-talk key appears rather than
+        // assuming a single tap lands on it. The wait is generous because the
+        // extension is launched on demand and the first switch after an install
+        // cold-starts KeyboardKit, which has taken over six seconds.
+        // Identified by its SF Symbol name, which is what SwiftUI uses when no
+        // identifier is set. It does not collide with the record tab's icon:
+        // that one goes through UITabBarItem and comes back as
+        // "microphone.fill".
+        let micKey = app.images["mic.fill"]
+        for _ in 1...4 {
+            if micKey.waitForExistence(timeout: 12) { break }
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.067, dy: 0.958)).tap()
+        }
+        XCTAssertTrue(micKey.exists, "Corvin's keyboard did not come up")
+
+        sleep(2)  // let the layout settle before it is photographed
         capture(named: "01-keyboard")
     }
 

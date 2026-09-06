@@ -102,6 +102,48 @@ struct WhisperModel: Identifiable, Codable, Equatable {
             downloadURL: URL(string: "\(whisperURL)/ggml-medium-q5_0.bin")!,
             sha256: "", recommended: false, chipRequirement: nil, tier: .free
         ),
+        WhisperModel(
+            id: "medium-q8_0", name: "medium-q8_0", size: "823 MB", ramRequired: "~950 MB",
+            quality: "models.quality.excellent_compressed", speed: "~2x realtime",
+            downloadURL: URL(string: "\(whisperURL)/ggml-medium-q8_0.bin")!,
+            sha256: "", recommended: false, chipRequirement: nil, tier: .free
+        ),
+        WhisperModel(
+            id: "small-q5_1", name: "small-q5_1", size: "190 MB", ramRequired: "~330 MB",
+            quality: "models.quality.good_compressed", speed: "~4x realtime",
+            downloadURL: URL(string: "\(whisperURL)/ggml-small-q5_1.bin")!,
+            sha256: "", recommended: false, chipRequirement: nil, tier: .free
+        ),
+        WhisperModel(
+            id: "small-q8_0", name: "small-q8_0", size: "264 MB", ramRequired: "~400 MB",
+            quality: "models.quality.good_compressed", speed: "~4x realtime",
+            downloadURL: URL(string: "\(whisperURL)/ggml-small-q8_0.bin")!,
+            sha256: "", recommended: false, chipRequirement: nil, tier: .free
+        ),
+        WhisperModel(
+            id: "base-q5_1", name: "base-q5_1", size: "60 MB", ramRequired: "~130 MB",
+            quality: "models.quality.normal_compressed", speed: "~7x realtime",
+            downloadURL: URL(string: "\(whisperURL)/ggml-base-q5_1.bin")!,
+            sha256: "", recommended: false, chipRequirement: nil, tier: .free
+        ),
+        WhisperModel(
+            id: "base-q8_0", name: "base-q8_0", size: "82 MB", ramRequired: "~150 MB",
+            quality: "models.quality.normal_compressed", speed: "~7x realtime",
+            downloadURL: URL(string: "\(whisperURL)/ggml-base-q8_0.bin")!,
+            sha256: "", recommended: false, chipRequirement: nil, tier: .free
+        ),
+        WhisperModel(
+            id: "tiny-q5_1", name: "tiny-q5_1", size: "32 MB", ramRequired: "~80 MB",
+            quality: "models.quality.basic_compressed", speed: "~10x realtime",
+            downloadURL: URL(string: "\(whisperURL)/ggml-tiny-q5_1.bin")!,
+            sha256: "", recommended: false, chipRequirement: nil, tier: .free
+        ),
+        WhisperModel(
+            id: "tiny-q8_0", name: "tiny-q8_0", size: "44 MB", ramRequired: "~95 MB",
+            quality: "models.quality.basic_compressed", speed: "~10x realtime",
+            downloadURL: URL(string: "\(whisperURL)/ggml-tiny-q8_0.bin")!,
+            sha256: "", recommended: false, chipRequirement: nil, tier: .free
+        ),
 
         // --- English-optimized ---
         WhisperModel(

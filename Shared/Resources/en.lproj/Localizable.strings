@@ -146,6 +146,9 @@
 "models.quality.good" = "good";
 "models.quality.excellent" = "excellent";
 "models.quality.best" = "best";
+"models.quality.basic_compressed" = "basic (compressed)";
+"models.quality.normal_compressed" = "normal (compressed)";
+"models.quality.good_compressed" = "good (compressed)";
 "models.quality.excellent_compressed" = "excellent (compressed)";
 "models.quality.best_compressed" = "best (compressed)";
 "models.quality.best_fast" = "best (fast)";

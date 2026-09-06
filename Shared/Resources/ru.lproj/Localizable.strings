@@ -146,6 +146,9 @@
 "models.quality.good" = "хорошее";
 "models.quality.excellent" = "отличное";
 "models.quality.best" = "лучшее";
+"models.quality.basic_compressed" = "базовое (сжатая)";
+"models.quality.normal_compressed" = "нормальное (сжатая)";
+"models.quality.good_compressed" = "хорошее (сжатая)";
 "models.quality.excellent_compressed" = "отличное (сжатая)";
 "models.quality.best_compressed" = "лучшее (сжатая)";
 "models.quality.best_fast" = "лучшее (быстрая)";

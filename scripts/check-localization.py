@@ -73,6 +73,22 @@ def specifiers(value: str) -> list:
 
 # --- 1..3: catalogue integrity -------------------------------------------------
 
+# Values that legitimately read the same as the English ones: brand names,
+# bare format strings, and words spelled identically in the target language.
+# Anything not listed here and identical to English is an untranslated string.
+UNTRANSLATED_OK = {
+    "es": {
+        "app.name", "pro.title", "settings.pro.title", "settings.pro.proIcon",
+        "common.duration.seconds", "menu.status.error",
+        "models.quality.normal", "models.recommended.short",
+        "settings.indicator.size.normal", "settings.tab.general", "status.error",
+    },
+    "ru": {
+        "app.name", "pro.title", "settings.pro.title", "settings.pro.proIcon",
+    },
+}
+
+
 def check_family(name: str, base: pathlib.Path) -> dict:
     langs = sorted(p.name[:-6] for p in base.glob("*.lproj"))
     if not langs:
@@ -103,6 +119,21 @@ def check_family(name: str, base: pathlib.Path) -> dict:
                     fail(f"[{name}] {table}: '{k}' format specifiers differ between "
                          f"{reference} ({specifiers(data[reference][k])}) and "
                          f"{lang} ({specifiers(d[k])})")
+        # Check 2b — a value that is still the English one. Key parity says
+        # nothing about whether anyone translated the value, and 218 of the 317
+        # Spanish strings once shipped as English while this linter reported
+        # "OK". Words that are genuinely the same in the target language are
+        # listed in UNTRANSLATED_OK.
+        for lang, d in data.items():
+            if lang == reference:
+                continue
+            for k in sorted(ref_keys & set(d)):
+                value = data[reference][k]
+                if value == d[k] and k not in UNTRANSLATED_OK.get(lang, ()):
+                    fail(f"[{name}] {table}: '{k}' in {lang} is still the "
+                         f"{reference} text ({value!r}) — translate it, or list "
+                         f"it in UNTRANSLATED_OK if it is the same word")
+
         if table == "Localizable.strings":
             coverage = {l: len(d) for l, d in data.items()}
             coverage["_keys"] = ref_keys

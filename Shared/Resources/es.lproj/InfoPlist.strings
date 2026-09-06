@@ -1,8 +1,8 @@
-"NSMicrophoneUsageDescription" = "Corvin uses the microphone to record your voice and convert it to text.";
-"NSAccessibilityUsageDescription" = "Corvin uses the Accessibility API to insert recognized text into the active input field.";
-"NSDesktopFolderUsageDescription" = "Corvin saves transcripts next to the audio files you transcribe from your Desktop.";
-"NSDocumentsFolderUsageDescription" = "Corvin saves transcripts next to the audio files you transcribe from your Documents folder.";
-"NSDownloadsFolderUsageDescription" = "Corvin saves transcripts next to the audio files you transcribe from your Downloads folder.";
-"NSRemovableVolumesUsageDescription" = "Corvin saves transcripts next to the audio files you transcribe from external drives.";
-"NSNetworkVolumesUsageDescription" = "Corvin saves transcripts next to the audio files you transcribe from network volumes.";
+"NSMicrophoneUsageDescription" = "Corvin usa el micrófono para grabar tu voz y convertirla en texto.";
+"NSAccessibilityUsageDescription" = "Corvin usa la API de accesibilidad para insertar el texto reconocido en el campo de entrada activo.";
+"NSDesktopFolderUsageDescription" = "Corvin guarda las transcripciones junto a los archivos de audio que transcribes desde el Escritorio.";
+"NSDocumentsFolderUsageDescription" = "Corvin guarda las transcripciones junto a los archivos de audio que transcribes desde la carpeta Documentos.";
+"NSDownloadsFolderUsageDescription" = "Corvin guarda las transcripciones junto a los archivos de audio que transcribes desde la carpeta Descargas.";
+"NSRemovableVolumesUsageDescription" = "Corvin guarda las transcripciones junto a los archivos de audio que transcribes desde unidades externas.";
+"NSNetworkVolumesUsageDescription" = "Corvin guarda las transcripciones junto a los archivos de audio que transcribes desde volúmenes de red.";
 "NSLocalNetworkUsageDescription" = "Corvin usa la red local solo para comunicar la app y el teclado dentro de tu dispositivo.";

@@ -2,9 +2,34 @@ import SwiftUI
 
 struct ModelManagerView: View {
     @EnvironmentObject var modelManager: ModelManager
+    @State private var isRefreshing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Always reachable. The catalogue is remote, so the list can go stale
+            // between launches, and the only other refresh used to sit inside the
+            // "new models" banner — which appears only once new models are already
+            // known. iOS has pull-to-refresh; this is its counterpart.
+            HStack {
+                Text("models.available".localized)
+                    .font(.headline)
+                Spacer()
+                Button {
+                    Task {
+                        isRefreshing = true
+                        await modelManager.refreshCatalog()
+                        isRefreshing = false
+                    }
+                } label: {
+                    if isRefreshing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("models.refresh".localized, systemImage: "arrow.clockwise")
+                    }
+                }
+                .disabled(isRefreshing)
+            }
+
             if modelManager.isIntel {
                 HStack {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -24,11 +49,6 @@ struct ModelManagerView: View {
                     Text("models.new.banner".localized(with: modelManager.unseenModelIDs.count))
                         .font(.caption)
                     Spacer()
-                    Button("models.refresh".localized) {
-                        Task { await modelManager.refreshCatalog() }
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
                 }
                 .padding(8)
                 .background(Color.blue.opacity(0.1))

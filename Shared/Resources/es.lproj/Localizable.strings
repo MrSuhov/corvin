@@ -49,7 +49,8 @@
 "test.perm.continueAnyway" = "Transcribir igualmente";
 "test.queue.summary" = "%d de %d listos";
 "test.queue.stop" = "Detener";
-"test.queue.stopping" = "Se detendrá al terminar el archivo actual…";
+"test.queue.stopping" = "Se detendrá al terminar el archivo actual. Pulsa de nuevo para interrumpirlo.";
+"test.queue.aborting" = "Interrumpiendo el archivo actual…";
 "test.queue.clear" = "Vaciar";
 "test.queue.saveAll" = "Guardar todo…";
 "test.queue.saveAllMessage" = "Elige una carpeta para las transcripciones sin guardar";
@@ -62,6 +63,7 @@
 "test.status.fallback" = "guardado en Application Support";
 "test.status.empty" = "no se detectó voz";
 "test.status.failed" = "error";
+"test.status.cancelled" = "detenido";
 "decoder.cannotOpen" = "No se pudo abrir el archivo: %@";
 "decoder.conversionFailed" = "Error de conversión: %@";
 "decoder.unsupportedCodec" = "Códec de audio no compatible: %@";

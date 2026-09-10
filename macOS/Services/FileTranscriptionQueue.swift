@@ -26,10 +26,12 @@ final class FileTranscriptionQueue: ObservableObject {
         /// Transcribed to nothing — silence, or too short to run at all.
         case empty
         case failed
+        /// Interrupted by a second press of Stop.
+        case cancelled
 
         var isFinished: Bool {
             switch self {
-            case .saved, .savedToFallback, .empty, .failed: return true
+            case .saved, .savedToFallback, .empty, .failed, .cancelled: return true
             case .pending, .waitingForMic, .decoding, .transcribing: return false
             }
         }
@@ -50,6 +52,8 @@ final class FileTranscriptionQueue: ObservableObject {
     @Published private(set) var jobs: [Job] = []
     @Published private(set) var isRunning = false
     @Published private(set) var stopRequested = false
+    /// Second press of Stop: abandon the file in flight too, not just the rest.
+    @Published private(set) var abortRequested = false
     /// Directories the last permission check found unwritable, for the banner.
     @Published private(set) var blockedDirectories: [URL] = []
 
@@ -79,6 +83,9 @@ final class FileTranscriptionQueue: ObservableObject {
     /// Mirror of `sessionManager.state` that is safe to read from the whisper
     /// worker thread; `@Published` properties are only safe on the main queue.
     private let micBusy = AtomicFlag()
+    /// Mirror of `abortRequested` for the whisper worker thread, which polls
+    /// it between chunks and from inside `whisper_full`.
+    private let cancelCurrent = AtomicFlag()
     private var cancellables = Set<AnyCancellable>()
     private var runner: Task<Void, Never>?
 
@@ -265,9 +272,17 @@ final class FileTranscriptionQueue: ObservableObject {
 
     // MARK: - Queue control
 
+    /// First press: finish the current file, skip the rest. Second press:
+    /// abandon the current file as well.
     func requestStop() {
         guard isRunning else { return }
-        stopRequested = true
+        if stopRequested {
+            abortRequested = true
+            cancelCurrent.value = true
+            flog("FileQueue: abort requested, interrupting the current file")
+        } else {
+            stopRequested = true
+        }
     }
 
     func clearFinished() {
@@ -278,12 +293,16 @@ final class FileTranscriptionQueue: ObservableObject {
     private func start() {
         guard runner == nil else { return }
         stopRequested = false
+        abortRequested = false
+        cancelCurrent.value = false
         isRunning = true
         runner = Task { [weak self] in
             await self?.run()
             self?.runner = nil
             self?.isRunning = false
             self?.stopRequested = false
+            self?.abortRequested = false
+            self?.cancelCurrent.value = false
         }
     }
 
@@ -307,9 +326,13 @@ final class FileTranscriptionQueue: ObservableObject {
         // Let the hotkey dictation flow finish before starting a new file.
         if micBusy.value {
             update(jobID) { $0.status = .waitingForMic }
-            while micBusy.value {
+            while micBusy.value, !cancelCurrent.value {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
+        }
+        if cancelCurrent.value {
+            finish(jobID, .cancelled)
+            return
         }
 
         guard modelManager.activeModel != nil else {
@@ -338,8 +361,15 @@ final class FileTranscriptionQueue: ObservableObject {
             return
         }
 
+        // Decoding can't be interrupted, but there is no point starting whisper.
+        if cancelCurrent.value {
+            finish(jobID, .cancelled)
+            return
+        }
+
         update(jobID) { $0.status = .transcribing }
         let busy = micBusy
+        let cancel = cancelCurrent
         let result: TranscriptionResult
         do {
             result = try await engine.transcribe(
@@ -349,8 +379,13 @@ final class FileTranscriptionQueue: ObservableObject {
                         self?.update(jobID) { $0.progress = ChunkProgress(current: current, total: total) }
                     }
                 },
-                shouldYield: { busy.value }
+                shouldYield: { busy.value },
+                shouldCancel: { cancel.value }
             )
+        } catch is CancellationError {
+            flog("FileQueue: transcription of \(url.lastPathComponent) interrupted")
+            finish(jobID, .cancelled)
+            return
         } catch {
             flog("FileQueue: transcribe failed for \(url.lastPathComponent): \(error)")
             finish(jobID, .failed, error: error.localizedDescription)

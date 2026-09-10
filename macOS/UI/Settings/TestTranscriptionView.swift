@@ -211,7 +211,7 @@ struct TestTranscriptionView: View {
                     Button("test.queue.stop".localized) { fileQueue.requestStop() }
                         .modifier(BorderedButtonCompat())
                         .controlSize(.small)
-                        .disabled(fileQueue.stopRequested)
+                        .disabled(fileQueue.abortRequested)
                 }
                 if !fileQueue.unsavedJobs.isEmpty {
                     Button("test.queue.saveAll".localized) { fileQueue.saveAllUnsaved() }
@@ -226,7 +226,7 @@ struct TestTranscriptionView: View {
             }
 
             if fileQueue.stopRequested {
-                Text("test.queue.stopping".localized)
+                Text((fileQueue.abortRequested ? "test.queue.aborting" : "test.queue.stopping").localized)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -416,6 +416,8 @@ private struct JobRow: View {
             caption("test.status.fallback".localized)
         case .empty:
             caption("test.status.empty".localized)
+        case .cancelled:
+            caption("test.status.cancelled".localized)
         case .failed:
             Text(job.error ?? "test.status.failed".localized)
                 .font(.caption)
@@ -440,6 +442,7 @@ private struct JobRow: View {
         case .saved: return "checkmark.circle.fill"
         case .savedToFallback: return "exclamationmark.circle.fill"
         case .empty: return "minus.circle"
+        case .cancelled: return "stop.circle"
         case .failed: return "xmark.circle.fill"
         }
     }

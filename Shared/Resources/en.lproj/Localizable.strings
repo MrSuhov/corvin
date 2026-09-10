@@ -49,7 +49,8 @@
 "test.perm.continueAnyway" = "Transcribe Anyway";
 "test.queue.summary" = "%d of %d done";
 "test.queue.stop" = "Stop";
-"test.queue.stopping" = "Stopping after the current file…";
+"test.queue.stopping" = "Stopping after the current file. Press again to interrupt it.";
+"test.queue.aborting" = "Interrupting the current file…";
 "test.queue.clear" = "Clear";
 "test.queue.saveAll" = "Save All…";
 "test.queue.saveAllMessage" = "Choose a folder for the unsaved transcripts";
@@ -62,6 +63,7 @@
 "test.status.fallback" = "saved to Application Support";
 "test.status.empty" = "no speech detected";
 "test.status.failed" = "failed";
+"test.status.cancelled" = "stopped";
 "decoder.cannotOpen" = "Could not open file: %@";
 "decoder.conversionFailed" = "Conversion error: %@";
 "decoder.unsupportedCodec" = "Unsupported audio codec: %@";

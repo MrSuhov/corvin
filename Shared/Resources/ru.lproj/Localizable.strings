@@ -49,7 +49,8 @@
 "test.perm.continueAnyway" = "Всё равно транскрибировать";
 "test.queue.summary" = "%d из %d готово";
 "test.queue.stop" = "Остановить";
-"test.queue.stopping" = "Остановимся после текущего файла…";
+"test.queue.stopping" = "Остановимся после текущего файла. Нажмите ещё раз, чтобы прервать его.";
+"test.queue.aborting" = "Прерываем текущий файл…";
 "test.queue.clear" = "Очистить";
 "test.queue.saveAll" = "Сохранить всё…";
 "test.queue.saveAllMessage" = "Выберите папку для несохранённых расшифровок";
@@ -62,6 +63,7 @@
 "test.status.fallback" = "сохранено в Application Support";
 "test.status.empty" = "речь не распознана";
 "test.status.failed" = "ошибка";
+"test.status.cancelled" = "остановлено";
 "decoder.cannotOpen" = "Не удалось открыть файл: %@";
 "decoder.conversionFailed" = "Ошибка конвертации: %@";
 "decoder.unsupportedCodec" = "Неподдерживаемый аудиокодек: %@";

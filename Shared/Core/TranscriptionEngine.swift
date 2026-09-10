@@ -127,9 +127,13 @@ class TranscriptionEngine: ObservableObject {
     ///     parks itself instead of taking the lock. `whisperLock` only spans a
     ///     single chunk, so without this a live dictation would queue behind a
     ///     25-second batch chunk before *each* of its own chunks.
+    ///   - shouldCancel: polled between chunks and from whisper's
+    ///     `abort_callback`, so a long file stops within the chunk in flight
+    ///     rather than at its end. Throws `CancellationError` once it fires.
     func transcribe(audioData: Data,
                     onProgress: ((Int, Int) -> Void)? = nil,
-                    shouldYield: (() -> Bool)? = nil) async throws -> TranscriptionResult {
+                    shouldYield: (() -> Bool)? = nil,
+                    shouldCancel: (() -> Bool)? = nil) async throws -> TranscriptionResult {
         engineLogger.info("transcribe called, audioData: \(audioData.count) bytes")
 
         // Minimum ~0.5s of audio at 16kHz 16-bit mono = 16000 bytes
@@ -182,16 +186,25 @@ class TranscriptionEngine: ObservableObject {
                 DispatchQueue.main.async { self.chunkProgress = ChunkProgress(current: 0, total: chunks.count) }
                 onProgress?(0, chunks.count)
 
-                let abortToken = AbortToken(engine: self, generation: myGeneration)
+                let abortToken = AbortToken(engine: self, generation: myGeneration,
+                                            shouldCancel: shouldCancel)
 
                 var fullText = ""
                 var detectedLang = ""
+                var cancelled = false
 
                 for (idx, chunk) in chunks.enumerated() {
                     // Step aside for the live dictation flow rather than
                     // interleaving chunk-for-chunk with it.
-                    while shouldYield?() == true, self.currentGeneration() == myGeneration {
+                    while shouldYield?() == true, shouldCancel?() != true,
+                          self.currentGeneration() == myGeneration {
                         Thread.sleep(forTimeInterval: 0.1)
+                    }
+
+                    if shouldCancel?() == true {
+                        flog("transcription cancelled at chunk \(idx)")
+                        cancelled = true
+                        break
                     }
 
                     guard self.currentGeneration() == myGeneration else {
@@ -216,6 +229,7 @@ class TranscriptionEngine: ObservableObject {
                         guard let ptr = userData else { return false }
                         let token = Unmanaged<AbortToken>.fromOpaque(ptr).takeUnretainedValue()
                         return token.engine.currentGeneration() != token.generation
+                            || token.shouldCancel?() == true
                     }
                     params.abort_callback_user_data = Unmanaged.passUnretained(abortToken).toOpaque()
 
@@ -264,6 +278,11 @@ class TranscriptionEngine: ObservableObject {
                 }
 
                 DispatchQueue.main.async { self.chunkProgress = .none }
+
+                if cancelled {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
 
                 // Belt and braces: re-decode before publishing. A String that
                 // claims to hold valid UTF-8 but doesn't will trap the moment
@@ -352,9 +371,11 @@ class TranscriptionEngine: ObservableObject {
     private final class AbortToken {
         let engine: TranscriptionEngine
         let generation: Int
-        init(engine: TranscriptionEngine, generation: Int) {
+        let shouldCancel: (() -> Bool)?
+        init(engine: TranscriptionEngine, generation: Int, shouldCancel: (() -> Bool)?) {
             self.engine = engine
             self.generation = generation
+            self.shouldCancel = shouldCancel
         }
     }
 

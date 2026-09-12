@@ -393,7 +393,6 @@
 "wake.step.listening" = "Conectando con el teclado";
 "wake.step.background" = "Activando el segundo plano";
 "wake.step.model" = "Cargando el modelo en memoria";
-"wake.returning" = "Volviendo atrás…";
 "wake.timedOut" = "No todo se inició a tiempo. Corvin seguirá abierto: inténtalo de nuevo.";
-"wake.noReturn" = "Corvin está listo. Vuelve a la app donde escribías.";
+"wake.ready" = "Corvin está listo. Vuelve a la app donde escribías.";
 "wake.dismiss" = "Entendido";

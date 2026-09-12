@@ -9,11 +9,10 @@ import SwiftUI
 struct WakeProgress {
     enum Stage {
         case waiting
-        case returning
-        /// Something never came up. We stay put rather than return into a suspension.
+        /// Everything is up; the user switches back themselves.
+        case ready
+        /// Something never came up in time.
         case timedOut
-        /// Ready, but there is no way to open the app they came from.
-        case noReturnRoute
     }
 
     var listening = false
@@ -78,17 +77,10 @@ struct WakeProgressView: View {
         switch progress.stage {
         case .waiting:
             EmptyView()
-        case .returning:
-            HStack(spacing: 8) {
-                ProgressView().scaleEffect(0.8)
-                Text("wake.returning".localized)
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
+        case .ready:
+            explanation("wake.ready".localized)
         case .timedOut:
             explanation("wake.timedOut".localized)
-        case .noReturnRoute:
-            explanation("wake.noReturn".localized)
         }
     }
 

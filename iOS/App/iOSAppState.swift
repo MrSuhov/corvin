@@ -81,9 +81,8 @@ class iOSAppState: ObservableObject {
             forName: .corvinWakeRequested,
             object: nil,
             queue: .main
-        ) { [weak self] note in
-            let host = note.userInfo?[WakeNotification.hostKey] as? String
-            self?.handleWakeRequest(returningTo: host)
+        ) { [weak self] _ in
+            self?.handleWakeRequest()
         }
 
         // Warm up model
@@ -207,11 +206,14 @@ class iOSAppState: ObservableObject {
 
     // MARK: - Waking from the keyboard
 
-    /// The keyboard could not reach us and the user pressed its wake button.
-    /// Arm everything the keyboard needs, then hand them straight back to the
-    /// app they were typing in.
-    func handleWakeRequest(returningTo host: String?) {
-        flog("App: wake requested by the keyboard, host=\(host ?? "unknown")")
+    /// The keyboard could not reach us, the user pressed its button and tapped
+    /// the banner. Arm everything the keyboard needs and show them the progress.
+    ///
+    /// We do not send them back ourselves: knowing which app to return to means
+    /// reading the private `_hostBundleID`, and that is not worth a private call
+    /// in a shipping build.
+    func handleWakeRequest() {
+        flog("App: wake requested by the keyboard")
 
         ipcServer.forceRestart()
         ipcServerRunning = true
@@ -240,21 +242,8 @@ class iOSAppState: ObservableObject {
                 return
             }
 
-            guard HostAppReturn.canReturn(to: host) else {
-                flog("App: no return route for \(host ?? "unknown"), staying in the foreground")
-                wakeProgress?.stage = .noReturnRoute
-                return
-            }
-
-            wakeProgress?.stage = .returning
-            let returned = await HostAppReturn.go(to: host)
-            flog("App: return to \(host ?? "unknown") \(returned ? "ok" : "failed")")
-            // On the way out the panel goes with us; if the open was refused we
-            // are still here, and the user needs to be told why.
-            wakeProgress = returned ? nil : WakeProgress(listening: true,
-                                                         holdingBackground: true,
-                                                         modelLoaded: true,
-                                                         stage: .noReturnRoute)
+            flog("App: ready for dictation, waiting for the user to switch back")
+            wakeProgress?.stage = .ready
         }
     }
 

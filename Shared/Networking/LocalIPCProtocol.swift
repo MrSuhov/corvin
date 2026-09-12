@@ -51,7 +51,6 @@ enum IPCErrorCode {
 /// extension posts it, the app recognises the tap.
 enum WakeNotification {
     static let category = "corvin.wake"
-    static let hostKey = "host"
 }
 
 /// Keys shared between the host app and the keyboard extension via the App Group.

@@ -40,11 +40,10 @@ class PTTController: ObservableObject {
     /// Ask the user to open Corvin. The keyboard cannot do it itself — see
     /// `HostAppWake` — so this posts a notification for them to tap.
     func wakeHostApp() {
-        guard let controller = inputViewController else { return }
-        let host = HostAppWake.hostBundleID(of: controller)
-        flog("PTT: asking the user to open the app, return target = \(host ?? "unknown")")
+        guard inputViewController != nil else { return }
+        flog("PTT: asking the user to open the app")
 
-        HostAppWake.postWakeNotification(host: host) { [weak self] outcome in
+        HostAppWake.postWakeNotification { [weak self] outcome in
             Task { @MainActor in
                 guard let self else { return }
                 switch outcome {

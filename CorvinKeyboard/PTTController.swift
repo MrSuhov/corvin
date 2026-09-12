@@ -24,6 +24,27 @@ class PTTController: ObservableObject {
         self.textProxy = textDocumentProxy
     }
 
+    // MARK: - Waking the host app
+
+    /// Set by `KeyboardViewController`. Opening the app needs the responder
+    /// chain, and only the view controller sits on it.
+    weak var inputViewController: UIInputViewController?
+
+    var canWakeHost: Bool { inputViewController != nil }
+
+    /// Open Corvin, telling it which app to send the user back to.
+    func wakeHostApp() {
+        guard let controller = inputViewController else { return }
+        let host = HostAppLauncher.hostBundleID(of: controller)
+        flog("PTT: waking host app, return target = \(host ?? "unknown")")
+        guard let url = HostAppLauncher.wakeURL(returningTo: host),
+              HostAppLauncher.open(url, from: controller) else {
+            flog("PTT: no UIApplication on the responder chain, cannot open the app")
+            lastError = "keyboard.error.wakeFailed".localized
+            return
+        }
+    }
+
     // MARK: - Keyboard lifecycle
 
     /// Announce ourselves to the host app. Doubles as the liveness check —

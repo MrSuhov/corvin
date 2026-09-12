@@ -24,6 +24,7 @@ class KeyboardViewController: KeyboardInputViewController {
         flog("Keyboard viewWillSetupKeyboardView")
 
         pttController = PTTController(textDocumentProxy: textDocumentProxy)
+        pttController.inputViewController = self
 
         let defaults = UserDefaults(suiteName: SharedDefaults.appGroup)
 

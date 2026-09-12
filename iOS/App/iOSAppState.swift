@@ -166,6 +166,41 @@ class iOSAppState: ObservableObject {
         }
     }
 
+    // MARK: - Waking from the keyboard
+
+    /// The keyboard could not reach us and the user pressed its wake button.
+    /// Arm everything the keyboard needs, then hand them straight back to the
+    /// app they were typing in.
+    func handleWakeRequest(returningTo host: String?) {
+        flog("App: wake requested by the keyboard, host=\(host ?? "unknown")")
+
+        ipcServer.forceRestart()
+        ipcServerRunning = true
+
+        if transcriptionEngine.isModelLoaded == false, modelManager.activeModel != nil {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.transcriptionEngine.ensureModelLoaded()
+            }
+        }
+
+        Task { @MainActor in
+            // Without background mode we are suspended again the moment control
+            // goes back, and the keyboard meets the very same error.
+            BackgroundKeepAliveService.shared.isEnabled = true
+            BackgroundKeepAliveService.shared.revive(reason: "keyboard wake")
+
+            guard HostAppReturn.canReturn(to: host) else {
+                flog("App: no return route for \(host ?? "unknown"), staying in the foreground")
+                return
+            }
+            // Let the listener and the keep-alive audio session come up first —
+            // returning too early drops the user on the error they just cleared.
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            let returned = await HostAppReturn.go(to: host)
+            flog("App: return to \(host ?? "unknown") \(returned ? "ok" : "failed")")
+        }
+    }
+
     /// While background mode is on, periodically ensure the IPC server is running.
     ///
     /// The 5s cadence is NOT tunable: `IPCServer.ensureRunning()` treats a gap over 10s

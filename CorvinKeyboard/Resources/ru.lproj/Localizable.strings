@@ -12,4 +12,7 @@
 "keyboard.status.connecting" = "Подключение к Corvin…";
 "keyboard.status.transcribing" = "Транскрипция…";
 "keyboard.error.hostAsleep" = "Corvin не в фоне. Откройте приложение один раз — дальше фон включится сам.";
+"keyboard.error.hostAsleep.short" = "Corvin не в фоне.";
+"keyboard.wake.button" = "Загрузить в фон";
+"keyboard.error.wakeFailed" = "Не удалось открыть Corvin. Откройте приложение вручную.";
 "keyboard.error.badResponse" = "Corvin ответил неожиданными данными. Попробуйте ещё раз.";

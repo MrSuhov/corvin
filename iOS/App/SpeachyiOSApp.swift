@@ -50,7 +50,16 @@ struct CorviniOSApp: App {
                         .environmentObject(appState.historyStore)
                         .environmentObject(appState)
                         .onOpenURL { url in
-                            appState.transcribeFile(url: url)
+                            // Two kinds of URL arrive here: an audio file shared
+                            // into Corvin, and the keyboard's own wake link.
+                            if url.scheme == HostAppReturn.scheme {
+                                guard url.host == "wake" else { return }
+                                let host = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                                    .queryItems?.first { $0.name == "host" }?.value
+                                appState.handleWakeRequest(returningTo: host)
+                            } else {
+                                appState.transcribeFile(url: url)
+                            }
                         }
                 } else {
                     iOSOnboardingView(onComplete: {

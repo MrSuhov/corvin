@@ -53,11 +53,27 @@ struct CorvinToolbarView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundColor(.orange)
                 .font(.caption)
-            Text(error)
-                .font(.caption)
-                .foregroundColor(.orange)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+            // A suspended host is the one error the user can fix from here, so
+            // it gets a button instead of an instruction to go and do it by hand.
+            if error == IPCError.hostAsleepMessage, pttController.canWakeHost {
+                Text("keyboard.error.hostAsleep.short".localized)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .lineLimit(1)
+                Button("keyboard.wake.button".localized) {
+                    pttController.wakeHostApp()
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .layoutPriority(1)
+            } else {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         } else {
             EmptyView()
         }

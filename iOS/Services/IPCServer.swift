@@ -407,7 +407,7 @@ class IPCServer {
             // A dead audio engine means we are running but not truly alive in the
             // background. Say so in a code: the keyboard turns it into its wake
             // button, which it cannot do from a localized message.
-            var payload: [String: Any] = ["id": requestId, "error": error.localizedDescription]
+            var payload = ["id": requestId, "error": error.localizedDescription]
             if case .engineStartFailed = error {
                 payload["code"] = IPCErrorCode.hostNotReady
             }

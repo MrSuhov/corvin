@@ -42,11 +42,18 @@ class PTTController: ObservableObject {
         guard let controller = inputViewController else { return }
         let host = HostAppLauncher.hostBundleID(of: controller)
         flog("PTT: waking host app, return target = \(host ?? "unknown")")
-        guard let url = HostAppLauncher.wakeURL(returningTo: host),
-              HostAppLauncher.open(url, from: controller) else {
-            flog("PTT: no UIApplication on the responder chain, cannot open the app")
-            lastError = "keyboard.error.wakeFailed".localized
-            return
+        guard let url = HostAppLauncher.wakeURL(returningTo: host) else { return }
+
+        HostAppLauncher.open(url, from: controller) { [weak self] opened in
+            Task { @MainActor in
+                guard let self, !opened else { return }
+                // Neither route worked. Drop the button and say so plainly
+                // rather than leaving a control that does nothing.
+                flog("PTT: could not open the app by any route")
+                self.needsHostWake = false
+                self.wakePrompt = nil
+                self.lastError = "keyboard.error.wakeFailed".localized
+            }
         }
     }
 

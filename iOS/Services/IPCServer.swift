@@ -40,6 +40,12 @@ class IPCServer {
         startHealthCheck()
     }
 
+    /// The listener is up and accepting connections. Read when deciding whether
+    /// it is safe to hand the user back to the app they came from.
+    var isReady: Bool {
+        listener?.state == .ready
+    }
+
     /// Periodic health check to detect and recover from listener issues
     private func startHealthCheck() {
         let timer = DispatchSource.makeTimerSource(flags: [], queue: queue)

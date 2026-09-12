@@ -44,20 +44,47 @@ enum HostAppLauncher {
         return nil
     }
 
-    /// Walk the responder chain to the `UIApplication` and ask it to open the
-    /// URL. Returns false when the chain holds no application — the caller must
-    /// then tell the user to open Corvin by hand.
-    @discardableResult
-    static func open(_ url: URL, from responder: UIResponder) -> Bool {
+    /// Open the app. Two routes, tried in order.
+    ///
+    /// `extensionContext.open` is the sanctioned one: Apple documents it as
+    /// working only for Today extensions, but it costs one call to find out,
+    /// it reports its own success, and if a future iOS opens it up to keyboards
+    /// this needs no further changes.
+    ///
+    /// Otherwise the responder chain. Note what is *not* checked here: that the
+    /// responder is a `UIApplication`. Inside an extension the object that
+    /// answers `openURL:` is usually some private proxy instead, so demanding
+    /// the real class is how the first version of this silently did nothing.
+    static func open(_ url: URL,
+                     from controller: UIInputViewController,
+                     completion: @escaping (Bool) -> Void) {
+        guard let context = controller.extensionContext else {
+            completion(openViaResponderChain(url, from: controller))
+            return
+        }
+        context.open(url) { opened in
+            if opened {
+                flog("HostAppLauncher: opened via extensionContext")
+                completion(true)
+                return
+            }
+            flog("HostAppLauncher: extensionContext refused, trying the responder chain")
+            completion(openViaResponderChain(url, from: controller))
+        }
+    }
+
+    private static func openViaResponderChain(_ url: URL, from responder: UIResponder) -> Bool {
         let selector = NSSelectorFromString("openURL:")
-        var next: UIResponder? = responder
+        var next: UIResponder? = responder.next
         while let current = next {
-            if let application = current as? UIApplication, application.responds(to: selector) {
-                application.perform(selector, with: url)
+            if current.responds(to: selector) {
+                flog("HostAppLauncher: openURL: answered by \(type(of: current))")
+                current.perform(selector, with: url)
                 return true
             }
             next = current.next
         }
+        flog("HostAppLauncher: nothing on the responder chain answered openURL:")
         return false
     }
 }

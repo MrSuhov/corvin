@@ -166,6 +166,26 @@ class iOSAppState: ObservableObject {
         }
     }
 
+    /// Everything that has to be true before the app is worth returning from:
+    /// the listener answers, the keep-alive really holds the process, and the
+    /// model is in memory. Returning without the second one is pointless — we
+    /// would be suspended on the way out and the keyboard would fail again.
+    @MainActor
+    private func waitUntilReadyToStepAside(timeout: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let listening = ipcServer.isReady
+            let holding = BackgroundKeepAliveService.shared.isHoldingProcess
+            let modelReady = modelManager.activeModel == nil || transcriptionEngine.isModelLoaded
+            if listening, holding, modelReady { return true }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+        flog("App: wake readiness timed out — listening=\(ipcServer.isReady), "
+             + "holding=\(BackgroundKeepAliveService.shared.isHoldingProcess), "
+             + "modelLoaded=\(transcriptionEngine.isModelLoaded)")
+        return false
+    }
+
     // MARK: - Waking from the keyboard
 
     /// The keyboard could not reach us and the user pressed its wake button.
@@ -193,9 +213,13 @@ class iOSAppState: ObservableObject {
                 flog("App: no return route for \(host ?? "unknown"), staying in the foreground")
                 return
             }
-            // Let the listener and the keep-alive audio session come up first —
-            // returning too early drops the user on the error they just cleared.
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            // A fixed pause was wrong: the link launches us from scratch when the
+            // app was closed, and a cold start takes far longer than any constant
+            // worth hardcoding. Wait for the actual signals instead.
+            guard await waitUntilReadyToStepAside(timeout: 15) else {
+                flog("App: not ready in time, staying in the foreground")
+                return
+            }
             let returned = await HostAppReturn.go(to: host)
             flog("App: return to \(host ?? "unknown") \(returned ? "ok" : "failed")")
         }

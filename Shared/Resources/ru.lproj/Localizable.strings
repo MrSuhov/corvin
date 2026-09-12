@@ -387,3 +387,13 @@
 
 // MARK: - Settings values
 "settings.engine.value" = "whisper.cpp (на устройстве)";
+
+/* Пробуждение из клавиатуры: что поднимается, пока человек ждёт. */
+"wake.title" = "Готовим Corvin к диктовке";
+"wake.step.listening" = "Поднимаем связь с клавиатурой";
+"wake.step.background" = "Включаем фоновый режим";
+"wake.step.model" = "Загружаем модель в память";
+"wake.returning" = "Возвращаем вас обратно…";
+"wake.timedOut" = "Не всё успело подняться. Corvin останется открытым — попробуйте продиктовать ещё раз.";
+"wake.noReturn" = "Corvin готов. Вернитесь в приложение, где вы печатали.";
+"wake.dismiss" = "Понятно";

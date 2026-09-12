@@ -46,6 +46,14 @@ struct MainView: View {
                     Text("tab.history".localized)
                 }
         }
+        // Only ever on screen on the keyboard's wake path.
+        .overlay {
+            if let progress = appState.wakeProgress {
+                WakeProgressView(progress: progress) {
+                    appState.wakeProgress = nil
+                }
+            }
+        }
     }
 }
 

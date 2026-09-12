@@ -16,4 +16,8 @@
 "keyboard.error.hostAsleep.short" = "Corvin no está en segundo plano.";
 "keyboard.wake.button" = "Cargar en segundo plano";
 "keyboard.error.wakeFailed" = "No se pudo abrir Corvin. Abre la app manualmente.";
+"keyboard.wake.notification.title" = "Corvin está listo para iniciarse";
+"keyboard.wake.notification.body" = "Toca para cargar Corvin en segundo plano y volver atrás";
+"keyboard.wake.tapBanner" = "Toca el aviso de arriba";
+"keyboard.error.notificationsOff" = "Permite las notificaciones de Corvin: es la única forma de abrirlo desde aquí.";
 "keyboard.error.badResponse" = "Corvin devolvió una respuesta inesperada. Inténtalo de nuevo.";

@@ -16,4 +16,8 @@
 "keyboard.error.hostAsleep.short" = "Corvin не в фоне.";
 "keyboard.wake.button" = "Загрузить в фон";
 "keyboard.error.wakeFailed" = "Не удалось открыть Corvin. Откройте приложение вручную.";
+"keyboard.wake.notification.title" = "Corvin готов запуститься";
+"keyboard.wake.notification.body" = "Нажмите, чтобы загрузить Corvin в фон и вернуться обратно";
+"keyboard.wake.tapBanner" = "Нажмите на баннер сверху";
+"keyboard.error.notificationsOff" = "Разрешите Corvin уведомления — иначе открыть его отсюда нельзя.";
 "keyboard.error.badResponse" = "Corvin ответил неожиданными данными. Попробуйте ещё раз.";

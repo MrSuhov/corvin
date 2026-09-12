@@ -1,6 +1,47 @@
 import SwiftUI
+import UserNotifications
 
-class AppDelegate: NSObject, UIApplicationDelegate {
+extension Notification.Name {
+    /// The user tapped the keyboard's "open Corvin" banner.
+    static let corvinWakeRequested = Notification.Name("corvinWakeRequested")
+}
+
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        // The keyboard has no other way to get the user here, so this permission
+        // is the whole feature rather than a nicety.
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { granted, error in
+            flog("AppDelegate: notification authorization granted=\(granted), error=\(error?.localizedDescription ?? "none")")
+        }
+        return true
+    }
+
+    /// The tap that the keyboard cannot perform for itself.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let content = response.notification.request.content
+        if content.categoryIdentifier == WakeNotification.category {
+            let host = content.userInfo[WakeNotification.hostKey] as? String
+            flog("AppDelegate: wake banner tapped, host=\(host ?? "unknown")")
+            NotificationCenter.default.post(name: .corvinWakeRequested,
+                                            object: nil,
+                                            userInfo: host.map { [WakeNotification.hostKey: $0] })
+        }
+        completionHandler()
+    }
+
+    /// Show the banner even if Corvin happens to be in the foreground already —
+    /// otherwise pressing the key looks like it did nothing at all.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner])
+    }
+
     func application(_ application: UIApplication,
                      handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {

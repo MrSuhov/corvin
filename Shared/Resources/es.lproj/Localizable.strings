@@ -387,3 +387,13 @@
 
 // MARK: - Settings values
 "settings.engine.value" = "whisper.cpp (en el dispositivo)";
+
+/* Despertar desde el teclado: qué se está iniciando mientras se espera. */
+"wake.title" = "Preparando Corvin";
+"wake.step.listening" = "Conectando con el teclado";
+"wake.step.background" = "Activando el segundo plano";
+"wake.step.model" = "Cargando el modelo en memoria";
+"wake.returning" = "Volviendo atrás…";
+"wake.timedOut" = "No todo se inició a tiempo. Corvin seguirá abierto: inténtalo de nuevo.";
+"wake.noReturn" = "Corvin está listo. Vuelve a la app donde escribías.";
+"wake.dismiss" = "Entendido";

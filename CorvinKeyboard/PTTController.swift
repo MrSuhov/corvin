@@ -37,22 +37,29 @@ class PTTController: ObservableObject {
 
     var canWakeHost: Bool { inputViewController != nil }
 
-    /// Open Corvin, telling it which app to send the user back to.
+    /// Ask the user to open Corvin. The keyboard cannot do it itself — see
+    /// `HostAppWake` — so this posts a notification for them to tap.
     func wakeHostApp() {
         guard let controller = inputViewController else { return }
-        let host = HostAppLauncher.hostBundleID(of: controller)
-        flog("PTT: waking host app, return target = \(host ?? "unknown")")
-        guard let url = HostAppLauncher.wakeURL(returningTo: host) else { return }
+        let host = HostAppWake.hostBundleID(of: controller)
+        flog("PTT: asking the user to open the app, return target = \(host ?? "unknown")")
 
-        HostAppLauncher.open(url, from: controller) { [weak self] opened in
+        HostAppWake.postWakeNotification(host: host) { [weak self] outcome in
             Task { @MainActor in
-                guard let self, !opened else { return }
-                // Neither route worked. Drop the button and say so plainly
-                // rather than leaving a control that does nothing.
-                flog("PTT: could not open the app by any route")
-                self.needsHostWake = false
-                self.wakePrompt = nil
-                self.lastError = "keyboard.error.wakeFailed".localized
+                guard let self else { return }
+                switch outcome {
+                case .posted:
+                    // Keep the button: the banner can be missed or swiped away.
+                    self.wakePrompt = "keyboard.wake.tapBanner".localized
+                case .notAuthorized:
+                    self.needsHostWake = false
+                    self.wakePrompt = nil
+                    self.lastError = "keyboard.error.notificationsOff".localized
+                case .failed:
+                    self.needsHostWake = false
+                    self.wakePrompt = nil
+                    self.lastError = "keyboard.error.wakeFailed".localized
+                }
             }
         }
     }

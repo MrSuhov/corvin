@@ -1,37 +1,26 @@
 import UIKit
+import UserNotifications
 
-/// Opening the containing app from the keyboard extension, and finding out
-/// which app the keyboard is typing into.
+/// Getting the user into Corvin from the keyboard.
 ///
-/// Neither has a public API. `extensionContext.open(_:)` is documented as
-/// Today-extension-only and does nothing here, and `UIApplication.shared` is
-/// unavailable inside an extension; what is left is the responder chain, which
-/// ends at the `UIApplication` of the keyboard's own process. The host app's
-/// bundle id is carried by `_hostBundleID`, which is private.
+/// A keyboard extension cannot launch its containing app. That is not a gap to
+/// work around: `extensionContext.open` is documented as supported only by the
+/// Today and iMessage extension points, and Apple DTS has said in as many words
+/// that walking the responder chain to call `openURL:` by selector is "not
+/// allowed". Both were tried on device here and did nothing whatsoever — no
+/// launch, no error. That code is gone.
 ///
-/// Both are deliberate uses of API Apple does not offer to extensions, accepted
-/// for the "wake Corvin" button. Every selector is probed with `responds(to:)`
-/// first: if a future iOS renames one, the button has to stop working — never
-/// crash the keyboard inside somebody else's text field.
-enum HostAppLauncher {
+/// What remains is to ask the user. A local notification is posted; tapping it
+/// launches Corvin, terminated or not, because the tap is the user's own
+/// action. The host's bundle id rides along in `userInfo` so the app can send
+/// them back to where they were typing.
+enum HostAppWake {
 
-    static let scheme = "corvin"
-
-    /// `corvin://wake?host=<bundle id>` — the host id rides along so the app
-    /// knows where to send the user back to.
-    static func wakeURL(returningTo host: String?) -> URL? {
-        var components = URLComponents()
-        components.scheme = scheme
-        components.host = "wake"
-        if let host, !host.isEmpty {
-            components.queryItems = [URLQueryItem(name: "host", value: host)]
-        }
-        return components.url
-    }
-
-    /// Bundle id of the app the keyboard is open in. Lives on the extension
-    /// context, and on some iOS versions only on the input view controller's
-    /// parent, so both are tried.
+    /// Bundle id of the app the keyboard is open in. Private API: it lives on
+    /// the extension context, and on some iOS versions only on the input view
+    /// controller's parent, so both are tried. Probed with `responds(to:)`
+    /// first — a rename must cost us the return trip, not a crash inside
+    /// somebody else's text field.
     static func hostBundleID(of controller: UIInputViewController) -> String? {
         let selector = NSSelectorFromString("_hostBundleID")
         let candidates: [NSObject?] = [controller.extensionContext, controller.parent]
@@ -44,47 +33,45 @@ enum HostAppLauncher {
         return nil
     }
 
-    /// Open the app. Two routes, tried in order.
-    ///
-    /// `extensionContext.open` is the sanctioned one: Apple documents it as
-    /// working only for Today extensions, but it costs one call to find out,
-    /// it reports its own success, and if a future iOS opens it up to keyboards
-    /// this needs no further changes.
-    ///
-    /// Otherwise the responder chain. Note what is *not* checked here: that the
-    /// responder is a `UIApplication`. Inside an extension the object that
-    /// answers `openURL:` is usually some private proxy instead, so demanding
-    /// the real class is how the first version of this silently did nothing.
-    static func open(_ url: URL,
-                     from controller: UIInputViewController,
-                     completion: @escaping (Bool) -> Void) {
-        guard let context = controller.extensionContext else {
-            completion(openViaResponderChain(url, from: controller))
-            return
-        }
-        context.open(url) { opened in
-            if opened {
-                flog("HostAppLauncher: opened via extensionContext")
-                completion(true)
-                return
-            }
-            flog("HostAppLauncher: extensionContext refused, trying the responder chain")
-            completion(openViaResponderChain(url, from: controller))
-        }
+    enum Outcome {
+        case posted
+        /// The user never granted notifications, so there is nothing we can show.
+        case notAuthorized
+        case failed
     }
 
-    private static func openViaResponderChain(_ url: URL, from responder: UIResponder) -> Bool {
-        let selector = NSSelectorFromString("openURL:")
-        var next: UIResponder? = responder.next
-        while let current = next {
-            if current.responds(to: selector) {
-                flog("HostAppLauncher: openURL: answered by \(type(of: current))")
-                current.perform(selector, with: url)
-                return true
+    static func postWakeNotification(host: String?, completion: @escaping (Outcome) -> Void) {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized
+                    || settings.authorizationStatus == .provisional else {
+                flog("HostAppWake: notifications not authorized (status \(settings.authorizationStatus.rawValue))")
+                completion(.notAuthorized)
+                return
             }
-            next = current.next
+
+            let content = UNMutableNotificationContent()
+            content.title = "keyboard.wake.notification.title".localized
+            content.body = "keyboard.wake.notification.body".localized
+            content.categoryIdentifier = WakeNotification.category
+            if let host, !host.isEmpty {
+                content.userInfo = [WakeNotification.hostKey: host]
+            }
+
+            // nil trigger delivers immediately; a fresh id each time so a second
+            // press is not swallowed as a duplicate of the first.
+            let request = UNNotificationRequest(identifier: "\(WakeNotification.category).\(UUID().uuidString)",
+                                                content: content,
+                                                trigger: nil)
+            center.add(request) { error in
+                if let error {
+                    flog("HostAppWake: could not post the wake notification: \(error.localizedDescription)")
+                    completion(.failed)
+                } else {
+                    flog("HostAppWake: wake notification posted, host=\(host ?? "unknown")")
+                    completion(.posted)
+                }
+            }
         }
-        flog("HostAppLauncher: nothing on the responder chain answered openURL:")
-        return false
     }
 }

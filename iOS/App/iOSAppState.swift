@@ -31,6 +31,9 @@ class iOSAppState: ObservableObject {
     }
 
     @Published var ipcServerRunning = false
+    /// Non-nil only while the keyboard's wake link is being served, so the
+    /// user can watch what is still starting instead of an idle-looking screen.
+    @Published var wakeProgress: WakeProgress?
 
     init() {
         #if os(iOS)
@@ -70,6 +73,17 @@ class iOSAppState: ObservableObject {
                 self?.ensureModelLoadedInBackground()
             }
             _ = BackgroundKeepAliveService.shared.isEnabled
+        }
+
+        // The keyboard's banner, tapped. AppDelegate turns the tap into this
+        // notification because it has no route to this object.
+        NotificationCenter.default.addObserver(
+            forName: .corvinWakeRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let host = note.userInfo?[WakeNotification.hostKey] as? String
+            self?.handleWakeRequest(returningTo: host)
         }
 
         // Warm up model
@@ -177,6 +191,11 @@ class iOSAppState: ObservableObject {
             let listening = ipcServer.isReady
             let holding = BackgroundKeepAliveService.shared.isHoldingProcess
             let modelReady = modelManager.activeModel == nil || transcriptionEngine.isModelLoaded
+
+            wakeProgress?.listening = listening
+            wakeProgress?.holdingBackground = holding
+            wakeProgress?.modelLoaded = modelReady
+
             if listening, holding, modelReady { return true }
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
@@ -204,24 +223,38 @@ class iOSAppState: ObservableObject {
         }
 
         Task { @MainActor in
+            wakeProgress = WakeProgress()
+
             // Without background mode we are suspended again the moment control
             // goes back, and the keyboard meets the very same error.
             BackgroundKeepAliveService.shared.isEnabled = true
             BackgroundKeepAliveService.shared.revive(reason: "keyboard wake")
 
-            guard HostAppReturn.canReturn(to: host) else {
-                flog("App: no return route for \(host ?? "unknown"), staying in the foreground")
-                return
-            }
             // A fixed pause was wrong: the link launches us from scratch when the
             // app was closed, and a cold start takes far longer than any constant
-            // worth hardcoding. Wait for the actual signals instead.
+            // worth hardcoding. Wait for the actual signals instead — and show
+            // them, because this is the part the user spends the time on.
             guard await waitUntilReadyToStepAside(timeout: 15) else {
                 flog("App: not ready in time, staying in the foreground")
+                wakeProgress?.stage = .timedOut
                 return
             }
+
+            guard HostAppReturn.canReturn(to: host) else {
+                flog("App: no return route for \(host ?? "unknown"), staying in the foreground")
+                wakeProgress?.stage = .noReturnRoute
+                return
+            }
+
+            wakeProgress?.stage = .returning
             let returned = await HostAppReturn.go(to: host)
             flog("App: return to \(host ?? "unknown") \(returned ? "ok" : "failed")")
+            // On the way out the panel goes with us; if the open was refused we
+            // are still here, and the user needs to be told why.
+            wakeProgress = returned ? nil : WakeProgress(listening: true,
+                                                         holdingBackground: true,
+                                                         modelLoaded: true,
+                                                         stage: .noReturnRoute)
         }
     }
 

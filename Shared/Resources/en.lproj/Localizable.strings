@@ -387,3 +387,13 @@
 
 // MARK: - Settings values
 "settings.engine.value" = "whisper.cpp (on-device)";
+
+/* Waking from the keyboard: what is starting while the user waits. */
+"wake.title" = "Getting Corvin ready";
+"wake.step.listening" = "Connecting to the keyboard";
+"wake.step.background" = "Turning background mode on";
+"wake.step.model" = "Loading the model into memory";
+"wake.returning" = "Taking you back…";
+"wake.timedOut" = "Not everything came up in time. Corvin stays open — try dictating again.";
+"wake.noReturn" = "Corvin is ready. Switch back to the app you were typing in.";
+"wake.dismiss" = "Got it";

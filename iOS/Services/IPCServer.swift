@@ -404,7 +404,14 @@ class IPCServer {
             results[requestId] = IPCResultResponse(status: "error", text: nil, language: nil, error: error.localizedDescription)
             resultsLock.unlock()
 
-            sendJSON(statusCode: 500, json: ["id": requestId, "error": error.localizedDescription], connection: connection)
+            // A dead audio engine means we are running but not truly alive in the
+            // background. Say so in a code: the keyboard turns it into its wake
+            // button, which it cannot do from a localized message.
+            var payload: [String: Any] = ["id": requestId, "error": error.localizedDescription]
+            if case .engineStartFailed = error {
+                payload["code"] = IPCErrorCode.hostNotReady
+            }
+            sendJSON(statusCode: 500, json: payload, connection: connection)
             return
         }
 

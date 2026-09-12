@@ -89,6 +89,10 @@ class IPCClient {
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let errorMsg = json["error"] as? String {
                 flog("IPC startRecording: server error: \(errorMsg)")
+                // The host is up but cannot record — recoverable by opening it.
+                if json["code"] as? String == IPCErrorCode.hostNotReady {
+                    throw IPCError.hostNotReady
+                }
                 throw IPCError.serverError(errorMsg)
             }
             throw IPCError.serverError("start-recording failed (\(http.statusCode))")
@@ -216,16 +220,42 @@ class IPCClient {
 
 enum IPCError: LocalizedError {
     case connectionFailed
+    /// The app answered, but its audio engine would not start.
+    case hostNotReady
     case serverError(String)
+
+    /// Both reachable-but-useless and unreachable hosts are fixed the same way:
+    /// open Corvin. The toolbar keys its wake button off this, never off the
+    /// message text.
+    var meansHostNeedsWaking: Bool {
+        switch self {
+        case .connectionFailed, .hostNotReady: return true
+        case .serverError: return false
+        }
+    }
 
     /// Shown whenever the host app is not reachable. The keyboard extension cannot launch
     /// it (extensions have no UIApplication), so the user has to open it once — after that
     /// background mode is persisted and re-arms itself.
     static var hostAsleepMessage: String { "keyboard.error.hostAsleep".localized }
 
+    /// Shown when the app is reachable but its microphone will not start.
+    static var hostNotReadyMessage: String { "keyboard.error.hostNotReady".localized }
+
+    /// One-line version for the toolbar, where the button carries the remedy and
+    /// a sentence telling the user to open the app by hand would contradict it.
+    var shortPrompt: String {
+        switch self {
+        case .connectionFailed: return "keyboard.error.hostAsleep.short".localized
+        case .hostNotReady: return IPCError.hostNotReadyMessage
+        case .serverError(let msg): return msg
+        }
+    }
+
     var errorDescription: String? {
         switch self {
         case .connectionFailed: return IPCError.hostAsleepMessage
+        case .hostNotReady: return IPCError.hostNotReadyMessage
         case .serverError(let msg): return msg
         }
     }

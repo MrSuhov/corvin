@@ -11,6 +11,11 @@ class PTTController: ObservableObject {
     @Published var recordingDuration: TimeInterval = 0
     @Published var lastError: String?
     @Published var isTranscribing = false
+    /// The host needs opening before dictation can work. Drives the toolbar's
+    /// wake button, which must not depend on matching an error message.
+    @Published var needsHostWake = false
+    /// One-line reason shown beside the wake button.
+    @Published var wakePrompt: String?
 
     private let ipcClient = IPCClient()
     private weak var textProxy: UITextDocumentProxy?
@@ -53,9 +58,13 @@ class PTTController: ObservableObject {
         Task { @MainActor in
             let alive = await ipcClient.notifyKeyboard(active: true)
             if alive {
+                needsHostWake = false
+                wakePrompt = nil
                 if lastError == IPCError.hostAsleepMessage { lastError = nil }
             } else {
                 flog("PTT: host not reachable on keyboard appear (\(hostLivenessDescription()))")
+                needsHostWake = true
+                wakePrompt = IPCError.connectionFailed.shortPrompt
                 lastError = IPCError.hostAsleepMessage
             }
         }
@@ -95,6 +104,8 @@ class PTTController: ObservableObject {
         // Clear any previous error at the start of a new attempt, so a retry never
         // costs the user an extra tap.
         lastError = nil
+        needsHostWake = false
+        wakePrompt = nil
         pendingStop = false
         isStarting = true
 
@@ -107,6 +118,8 @@ class PTTController: ObservableObject {
                 flog("startRecording: IPC FAILED: \(error.localizedDescription)")
                 isStarting = false
                 pendingStop = false
+                needsHostWake = (error as? IPCError)?.meansHostNeedsWaking == true
+                wakePrompt = (error as? IPCError)?.shortPrompt
                 lastError = error.localizedDescription
                 return
             }
@@ -190,6 +203,8 @@ class PTTController: ObservableObject {
                 isTranscribing = false
             } catch {
                 flog("stopRecording: IPC FAILED: \(error.localizedDescription)")
+                needsHostWake = (error as? IPCError)?.meansHostNeedsWaking == true
+                wakePrompt = (error as? IPCError)?.shortPrompt
                 lastError = error.localizedDescription
                 isTranscribing = false
             }

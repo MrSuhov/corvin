@@ -12,6 +12,7 @@
 "keyboard.status.connecting" = "Connecting to Corvin…";
 "keyboard.status.transcribing" = "Transcribing…";
 "keyboard.error.hostAsleep" = "Corvin is not running in the background. Open the app once — after that it re-arms itself.";
+"keyboard.error.hostNotReady" = "Corvin cannot record right now.";
 "keyboard.error.hostAsleep.short" = "Corvin is not running.";
 "keyboard.wake.button" = "Load in background";
 "keyboard.error.wakeFailed" = "Could not open Corvin. Please open the app by hand.";

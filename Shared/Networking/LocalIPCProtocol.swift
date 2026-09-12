@@ -35,6 +35,18 @@ struct IPCResultResponse: Codable {
     let error: String?
 }
 
+/// Machine-readable reason for an IPC failure.
+///
+/// The keyboard used to key its behaviour off the host's error *text*, which
+/// arrives already localized in the app's language and changes whenever the
+/// wording does. A code lets the extension react to the condition instead.
+enum IPCErrorCode {
+    /// The app answered but cannot record: alive, yet not properly in the
+    /// background. Recoverable by opening the app, which is what the keyboard's
+    /// wake button does.
+    static let hostNotReady = "hostNotReady"
+}
+
 /// Keys shared between the host app and the keyboard extension via the App Group.
 enum SharedDefaults {
     static let appGroup = "group.com.corvinvoice.app"

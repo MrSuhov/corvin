@@ -55,8 +55,8 @@ struct CorvinToolbarView: View {
                 .font(.caption)
             // A suspended host is the one error the user can fix from here, so
             // it gets a button instead of an instruction to go and do it by hand.
-            if error == IPCError.hostAsleepMessage, pttController.canWakeHost {
-                Text("keyboard.error.hostAsleep.short".localized)
+            if pttController.needsHostWake, pttController.canWakeHost {
+                Text(pttController.wakePrompt ?? "keyboard.error.hostAsleep.short".localized)
                     .font(.caption)
                     .foregroundColor(.orange)
                     .lineLimit(1)

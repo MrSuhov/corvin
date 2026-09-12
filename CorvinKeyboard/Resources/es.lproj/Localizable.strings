@@ -12,6 +12,7 @@
 "keyboard.status.connecting" = "Conectando con Corvin…";
 "keyboard.status.transcribing" = "Transcribiendo…";
 "keyboard.error.hostAsleep" = "Corvin no está en segundo plano. Abre la app una vez: después se reactivará solo.";
+"keyboard.error.hostNotReady" = "Corvin no puede grabar ahora.";
 "keyboard.error.hostAsleep.short" = "Corvin no está en segundo plano.";
 "keyboard.wake.button" = "Cargar en segundo plano";
 "keyboard.error.wakeFailed" = "No se pudo abrir Corvin. Abre la app manualmente.";

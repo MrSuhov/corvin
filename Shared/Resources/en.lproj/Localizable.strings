@@ -396,3 +396,7 @@
 "wake.timedOut" = "Not everything came up in time. Corvin stays open — try dictating again.";
 "wake.ready" = "Corvin is ready. Switch back to the app you were typing in.";
 "wake.dismiss" = "Got it";
+
+/* Realtime dictation */
+"settings.general.realtime" = "Type text while speaking";
+"settings.general.realtime.hint" = "Text appears in the active field about 1–2 seconds behind your speech, without waiting for the key to be released. Requires auto-insert.";

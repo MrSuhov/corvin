@@ -396,3 +396,7 @@
 "wake.timedOut" = "No todo se inició a tiempo. Corvin seguirá abierto: inténtalo de nuevo.";
 "wake.ready" = "Corvin está listo. Vuelve a la app donde escribías.";
 "wake.dismiss" = "Entendido";
+
+/* Realtime dictation */
+"settings.general.realtime" = "Escribir el texto mientras hablas";
+"settings.general.realtime.hint" = "El texto aparece en el campo activo con 1–2 segundos de retraso, sin esperar a que sueltes la tecla. Requiere la inserción automática.";

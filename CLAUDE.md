@@ -40,7 +40,26 @@ Keyboard Extension (KeyboardKit) + host app. Push-To-Talk via mic button tap or 
 
 `idle → recording → transcribing → inserting → done → idle`
 
-SessionState enum drives all UI and service coordination.
+SessionState enum drives the UI. On macOS the transitions of the hotkey flow
+live in `DictationCoordinator`, not in AppDelegate.
+
+### Dictation pipeline (macOS)
+
+```
+AudioCaptureService.onSamples ─► SpeechRecognizer ─► TranscriptEvent ─► TranscriptPipeline ─► sinks
+```
+
+- `SpeechRecognizer` (`Shared/Core/Dictation/`) — one per session. `WhisperBatchRecognizer`
+  (whole recording on release), `WhisperStreamingRecognizer` (re-transcribes a sliding
+  window ~1/s, commits words two runs agree on — `HypothesisBuffer`, LocalAgreement-2).
+- Events: `.volatile` (never inserted), `.committed` (stable, typed live in realtime mode),
+  `.finished` (whole utterance after processors, emitted by the coordinator).
+- Sinks: `TextInsertionSink` (paste on release, or `IncrementalTextInserter` typing committed
+  chunks via Unicode key events — no clipboard), `ClipboardSink`, `HistorySink`. A future
+  assistant is another sink reacting to `.finished`.
+- `TranscriptProcessor` transforms the finished utterance. One with `modifiesText` disables
+  realtime insertion — typed text cannot be taken back.
+- Setting: `DictationSettings.realtimeKey` (`realtimeDictation`), toggle in General settings.
 
 ### Directory Structure
 

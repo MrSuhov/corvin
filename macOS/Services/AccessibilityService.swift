@@ -188,6 +188,42 @@ class AccessibilityService {
         up.post(tap: .cgAnnotatedSessionEventTap)
     }
 
+    /// Types `text` as if from the keyboard, without the clipboard.
+    ///
+    /// The string rides on key events via `keyboardSetUnicodeString`, split into
+    /// pieces because a single event carries at most 20 UTF-16 units. Flags are
+    /// cleared explicitly: dictation posts these while the record key is still
+    /// held, and a leaked fn or Option would turn text into shortcuts.
+    /// Blocks briefly between pieces, so call it off the main thread.
+    func typeUnicode(_ text: String) {
+        let units = Array(text.utf16)
+        let pieceLength = 20
+        var offset = 0
+        while offset < units.count {
+            var end = min(offset + pieceLength, units.count)
+            // Never split a surrogate pair across two events.
+            if end < units.count, UTF16.isLeadSurrogate(units[end - 1]) {
+                end -= 1
+            }
+            var piece = Array(units[offset..<end])
+            guard let down = CGEvent(keyboardEventSource: Self.syntheticSource, virtualKey: 0, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: Self.syntheticSource, virtualKey: 0, keyDown: false)
+            else {
+                flog("typeUnicode: FAILED to create events")
+                return
+            }
+            down.flags = []
+            up.flags = []
+            down.keyboardSetUnicodeString(stringLength: piece.count, unicodeString: &piece)
+            up.keyboardSetUnicodeString(stringLength: piece.count, unicodeString: &piece)
+            down.post(tap: .cgAnnotatedSessionEventTap)
+            up.post(tap: .cgAnnotatedSessionEventTap)
+            offset = end
+            // Some apps coalesce or reorder events that arrive in one burst.
+            usleep(2_000)
+        }
+    }
+
     // MARK: - Pasteboard snapshot
 
     /// Deep copy of the current pasteboard so a synthetic copy/paste round-trip

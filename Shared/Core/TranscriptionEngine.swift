@@ -15,6 +15,21 @@ struct ChunkProgress: Equatable {
     static let none = ChunkProgress()
 }
 
+/// A segment of one `transcribeWindow` run. Times are seconds from the start
+/// of the window.
+struct WhisperSegment {
+    let text: String
+    let start: TimeInterval
+    let end: TimeInterval
+    let noSpeechProbability: Float
+    let words: [TimedWord]
+}
+
+struct WhisperWindowResult {
+    let segments: [WhisperSegment]
+    let language: String
+}
+
 class TranscriptionEngine: ObservableObject {
     private let modelManager: ModelManager
     private var whisperContext: OpaquePointer?
@@ -143,6 +158,37 @@ class TranscriptionEngine: ObservableObject {
         }
 
         flog("starting transcription with \(audioData.count) bytes of audio")
+        return try await run(onProgress: onProgress, shouldYield: shouldYield, shouldCancel: shouldCancel) {
+            audioData.withUnsafeBytes { buffer -> [Float] in
+                let int16Buffer = buffer.bindMemory(to: Int16.self)
+                return int16Buffer.map { Float($0) / 32768.0 }
+            }
+        }
+    }
+
+    /// `transcribe(audioData:)` for audio that is already 16 kHz mono Float32.
+    func transcribe(samples: [Float],
+                    onProgress: ((Int, Int) -> Void)? = nil,
+                    shouldYield: (() -> Bool)? = nil,
+                    shouldCancel: (() -> Bool)? = nil) async throws -> TranscriptionResult {
+        // Minimum ~0.5s of audio at 16kHz
+        if samples.count < 8000 {
+            flog("audio too short: \(samples.count) samples, skipping whisper_full")
+            return TranscriptionResult(text: "", language: "")
+        }
+
+        flog("starting transcription with \(samples.count) samples of audio")
+        return try await run(onProgress: onProgress, shouldYield: shouldYield, shouldCancel: shouldCancel) {
+            samples
+        }
+    }
+
+    /// - Parameter loadSamples: runs on the transcription thread, so turning a
+    ///   long file's bytes into floats stays off the cooperative pool.
+    private func run(onProgress: ((Int, Int) -> Void)?,
+                     shouldYield: (() -> Bool)?,
+                     shouldCancel: (() -> Bool)?,
+                     loadSamples: @escaping () -> [Float]) async throws -> TranscriptionResult {
         return try await withCheckedThrowingContinuation { continuation in
             var thread: Thread!
             thread = Thread {
@@ -158,11 +204,7 @@ class TranscriptionEngine: ObservableObject {
                     return
                 }
 
-                // Convert Data to [Float] PCM samples
-                var samples = audioData.withUnsafeBytes { buffer -> [Float] in
-                    let int16Buffer = buffer.bindMemory(to: Int16.self)
-                    return int16Buffer.map { Float($0) / 32768.0 }
-                }
+                var samples = loadSamples()
 
                 // Log audio stats
                 var maxAmp = samples.map { abs($0) }.max() ?? 0
@@ -306,6 +348,127 @@ class TranscriptionEngine: ObservableObject {
             thread.qualityOfService = .utility
             thread.start()
         }
+    }
+
+    /// One whisper run over a short window of live audio, for streaming.
+    ///
+    /// Synchronous: it blocks the caller for the whole run, so call it from a
+    /// queue of your own, never the main thread or the cooperative pool.
+    /// Unlike `transcribe`, it does not chunk, normalise or filter — the
+    /// streaming recognizer owns those decisions.
+    ///
+    /// - Parameters:
+    ///   - prompt: text the decoder treats as what was said just before.
+    ///   - language: whisper language code, or nil to auto-detect.
+    func transcribeWindow(samples: [Float], prompt: String?, language: String?) throws -> WhisperWindowResult {
+        let myGeneration = try prepareContext()
+
+        // whisper_full produces no segments for input under a second.
+        var input = samples
+        let minSamples = 16000 + 1600
+        if input.count < minSamples {
+            input += [Float](repeating: 0, count: minSamples - input.count)
+        }
+
+        var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+        params.translate = false
+        params.n_threads = Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 2))
+        params.print_progress = false
+        params.no_context = true
+        params.token_timestamps = true
+        params.suppress_nst = true
+
+        let abortToken = AbortToken(engine: self, generation: myGeneration, shouldCancel: nil)
+        params.abort_callback = { userData in
+            guard let ptr = userData else { return false }
+            let token = Unmanaged<AbortToken>.fromOpaque(ptr).takeUnretainedValue()
+            return token.engine.currentGeneration() != token.generation
+        }
+        params.abort_callback_user_data = Unmanaged.passUnretained(abortToken).toOpaque()
+
+        // Held through the readout: segment and token texts live inside ctx.
+        whisperLock.lock()
+        defer { whisperLock.unlock() }
+        guard let ctx = whisperContext, currentGeneration() == myGeneration else {
+            throw CancellationError()
+        }
+
+        let status: Int32 = withExtendedLifetime(abortToken) {
+            Self.withOptionalCString(language) { languagePtr in
+                Self.withOptionalCString(prompt) { promptPtr in
+                    var runParams = params
+                    runParams.language = languagePtr
+                    runParams.initial_prompt = promptPtr
+                    return input.withUnsafeBufferPointer { ptr in
+                        whisper_full(ctx, runParams, ptr.baseAddress, Int32(ptr.count))
+                    }
+                }
+            }
+        }
+        guard status == 0 else {
+            if currentGeneration() != myGeneration { throw CancellationError() }
+            throw TranscriptionError.transcriptionFailed
+        }
+
+        let eot = whisper_token_eot(ctx)
+        var segments: [WhisperSegment] = []
+        for i in 0..<whisper_full_n_segments(ctx) {
+            var words: [TimedWord] = []
+            var wordBytes: [UInt8] = []
+            var wordStart: Int64 = 0
+            var wordEnd: Int64 = 0
+
+            // Bytes, not Strings, until a word is complete: BPE tokens split
+            // Cyrillic letters mid-character, so a single token is often not
+            // valid UTF-8 on its own.
+            func finishWord() {
+                let text = String(decoding: wordBytes, as: UTF8.self).trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty {
+                    words.append(TimedWord(text: text,
+                                           start: Double(wordStart) / 100,
+                                           end: Double(wordEnd) / 100))
+                }
+                wordBytes = []
+            }
+
+            for j in 0..<whisper_full_n_tokens(ctx, i) {
+                guard whisper_full_get_token_id(ctx, i, j) < eot,
+                      let tokenText = whisper_full_get_token_text(ctx, i, j) else { continue }
+                let bytes = Self.bytes(of: tokenText)
+                if bytes.first == 0x20, !wordBytes.isEmpty {
+                    finishWord()
+                }
+                let data = whisper_full_get_token_data(ctx, i, j)
+                if wordBytes.isEmpty {
+                    wordStart = data.t0
+                }
+                wordBytes += bytes
+                wordEnd = data.t1
+            }
+            finishWord()
+
+            let text = whisper_full_get_segment_text(ctx, i).map { String(decoding: Self.bytes(of: $0), as: UTF8.self) } ?? ""
+            segments.append(WhisperSegment(
+                text: text,
+                start: Double(whisper_full_get_segment_t0(ctx, i)) / 100,
+                end: Double(whisper_full_get_segment_t1(ctx, i)) / 100,
+                noSpeechProbability: whisper_full_get_segment_no_speech_prob(ctx, i),
+                words: words
+            ))
+        }
+
+        let language = String(cString: whisper_lang_str(whisper_full_lang_id(ctx)))
+        return WhisperWindowResult(segments: segments, language: language)
+    }
+
+    private static func bytes(of cString: UnsafePointer<CChar>) -> [UInt8] {
+        Array(UnsafeBufferPointer(start: UnsafeRawPointer(cString).assumingMemoryBound(to: UInt8.self),
+                                  count: strlen(cString)))
+    }
+
+    private static func withOptionalCString<R>(_ string: String?, _ body: (UnsafePointer<CChar>?) throws -> R) rethrows -> R {
+        guard let string else { return try body(nil) }
+        return try string.withCString(body)
     }
 
     var isModelLoaded: Bool {

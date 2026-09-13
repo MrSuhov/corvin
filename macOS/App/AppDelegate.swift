@@ -12,6 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var layoutSwitchService: LayoutSwitchService!
     private(set) var transcriptionEngine: TranscriptionEngine!
     private(set) var fileQueue: FileTranscriptionQueue!
+    private var dictationCoordinator: DictationCoordinator!
 
     private var statusBarController: StatusBarController!
     private var floatingIndicator: FloatingIndicatorController!
@@ -51,7 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "layoutSwitchEnabled": true,
             "layoutSwitchChangesInputSource": true,
             "layoutSwitchKeyCode": ModifierKey.option.canonicalKeyCode,
-        ])
+        ].merging(DictationSettings.defaults) { current, _ in current })
 
         accessibilityService = AccessibilityService()
         layoutSwitchService = LayoutSwitchService(accessibility: accessibilityService)
@@ -64,6 +65,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                                           sessionManager: sessionManager,
                                           modelManager: modelManager)
         hotkeyService = HotkeyService()
+        dictationCoordinator = DictationCoordinator(
+            sessionManager: sessionManager,
+            modelManager: modelManager,
+            historyStore: historyStore,
+            audioCapture: audioCaptureService,
+            accessibility: accessibilityService,
+            engine: transcriptionEngine
+        )
 
         statusBarController = StatusBarController(
             sessionManager: sessionManager,
@@ -125,11 +134,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupBindings() {
         hotkeyService.onKeyDown = { [weak self] in
-            self?.startRecording()
+            self?.dictationCoordinator.keyDown()
         }
 
         hotkeyService.onKeyUp = { [weak self] in
-            self?.stopRecordingAndTranscribe()
+            self?.dictationCoordinator.keyUp()
         }
 
         hotkeyService.onLayoutSwitchTap = { [weak self] in
@@ -151,117 +160,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.hotkeyService.refreshEventMask()
-        }
-    }
-
-    private func startRecording() {
-        flog("startRecording: current state=\(sessionManager.state)")
-        switch sessionManager.state {
-        case .idle: break
-        case .error, .done: sessionManager.state = .idle
-        default:
-            flog("startRecording: rejected, state=\(sessionManager.state)")
-            return
-        }
-
-        guard audioCaptureService.hasMicrophonePermission else {
-            flog("startRecording: no mic permission, requesting")
-            audioCaptureService.requestMicrophonePermission { granted in
-                flog("startRecording: mic permission granted=\(granted)")
-                if granted {
-                    DispatchQueue.main.async { self.startRecording() }
-                }
-            }
-            return
-        }
-
-        guard let model = modelManager.activeModel else {
-            flog("startRecording: no active model")
-            sessionManager.state = .error("error.modelNotLoaded".localized)
-            return
-        }
-
-        flog("startRecording: starting capture, model=\(model.name)")
-        sessionManager.state = .recording
-        sessionManager.recordingStartTime = Date()
-        audioCaptureService.startCapture()
-    }
-
-    private func stopRecordingAndTranscribe() {
-        flog("stopRecordingAndTranscribe: current state=\(sessionManager.state)")
-        guard sessionManager.state == .recording else {
-            flog("stopRecordingAndTranscribe: rejected, not recording")
-            return
-        }
-
-        let audioData = audioCaptureService.stopCapture()
-        flog("stopRecordingAndTranscribe: captured \(audioData.count) bytes")
-        sessionManager.state = .transcribing
-
-        Task {
-            do {
-                flog("transcribe: starting")
-                let result = try await transcriptionEngine.transcribe(audioData: audioData)
-                flog("transcribe: result text='\(result.text.prefix(100))', lang=\(result.language)")
-                await MainActor.run {
-                    guard !result.text.isEmpty else {
-                        flog("transcribe: empty result, showing error feedback")
-                        sessionManager.state = .error("error.recognitionFailed".localized)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                            if case .error = self.sessionManager.state {
-                                self.sessionManager.state = .idle
-                            }
-                        }
-                        return
-                    }
-                    sessionManager.state = .inserting(result.text)
-
-                    let autoInsert = UserDefaults.standard.bool(forKey: "autoInsertText")
-                    let copyClipboard = UserDefaults.standard.bool(forKey: "copyToClipboard")
-                    flog("insertion: autoInsert=\(autoInsert), copyToClipboard=\(copyClipboard)")
-
-                    if autoInsert {
-                        flog("insertion: calling accessibilityService.insertText")
-                        accessibilityService.insertText(result.text)
-                    }
-
-                    if copyClipboard {
-                        flog("insertion: copying to clipboard")
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(result.text, forType: .string)
-                    }
-
-                    let duration = sessionManager.recordingStartTime.map {
-                        Date().timeIntervalSince($0)
-                    } ?? 0
-
-                    historyStore.addRecord(
-                        text: result.text,
-                        duration: duration,
-                        modelUsed: modelManager.activeModel?.name ?? "unknown",
-                        language: result.language
-                    )
-                    flog("insertion: saved to history, duration=\(String(format: "%.1f", duration))s")
-
-                    sessionManager.state = .done(result.text)
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        if case .done = self.sessionManager.state {
-                            self.sessionManager.state = .idle
-                        }
-                    }
-                }
-            } catch {
-                flog("transcribe: ERROR \(error)")
-                await MainActor.run {
-                    sessionManager.state = .error(error.localizedDescription)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        if case .error = self.sessionManager.state {
-                            self.sessionManager.state = .idle
-                        }
-                    }
-                }
-            }
         }
     }
 

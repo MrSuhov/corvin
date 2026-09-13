@@ -11,6 +11,17 @@ class AudioCaptureService {
     /// Set by callers that want live mic metering (e.g. onboarding test step). nil = no metering.
     var onLevel: ((Float) -> Void)?
 
+    /// Receives every converted tap buffer as 16 kHz mono Float32, on the audio
+    /// thread. Set before `startCapture()`; `stopCapture()` clears it.
+    ///
+    /// Stored and invoked under `audioDataQueue`, so once `stopCapture()`
+    /// returns no further call can arrive.
+    var onSamples: (([Float]) -> Void)? {
+        get { audioDataQueue.sync { sampleHandler } }
+        set { audioDataQueue.sync { sampleHandler = newValue } }
+    }
+    private var sampleHandler: (([Float]) -> Void)?
+
     var hasMicrophonePermission: Bool {
         if #available(macOS 14.0, *) {
             return AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
@@ -130,9 +141,14 @@ class AudioCaptureService {
             }
 
             if (status == .haveData || status == .inputRanDry), let channelData = convertedBuffer.int16ChannelData {
-                let data = Data(bytes: channelData[0], count: Int(convertedBuffer.frameLength) * 2)
+                let frameLength = Int(convertedBuffer.frameLength)
+                let int16 = channelData[0]
+                let data = Data(bytes: int16, count: frameLength * 2)
                 self.audioDataQueue.sync {
                     self.audioData.append(data)
+                    if let handler = self.sampleHandler {
+                        handler((0..<frameLength).map { Float(int16[$0]) / 32768.0 })
+                    }
                 }
             } else if tapBufferCount == 0 {
                 flog("startCapture: converter status=\(status.rawValue), no data")
@@ -220,6 +236,7 @@ class AudioCaptureService {
         let captured: Data = audioDataQueue.sync {
             let snapshot = audioData
             audioData = Data()
+            sampleHandler = nil
             return snapshot
         }
         flog("stopCapture: captured \(captured.count) bytes")

@@ -142,6 +142,7 @@ struct GeneralSettingsView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("autoInsertText") private var autoInsertText = true
     @AppStorage("copyToClipboard") private var copyToClipboard = false
+    @AppStorage(DictationSettings.realtimeKey) private var realtimeDictation = false
     @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 63
     @State private var isRecordingHotkey = false
 
@@ -178,6 +179,12 @@ struct GeneralSettingsView: View {
             }
 
             Toggle("settings.general.autoInsert".localized, isOn: $autoInsertText)
+            Toggle("settings.general.realtime".localized, isOn: $realtimeDictation)
+                .disabled(!autoInsertText)
+            Text("settings.general.realtime.hint".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Toggle("settings.general.copyToClipboard".localized, isOn: $copyToClipboard)
 
             Divider()

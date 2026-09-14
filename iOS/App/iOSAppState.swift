@@ -225,7 +225,8 @@ class iOSAppState: ObservableObject {
         }
 
         Task { @MainActor in
-            wakeProgress = WakeProgress()
+            let wake = WakeProgress()
+            wakeProgress = wake
 
             // Without background mode we are suspended again the moment control
             // goes back, and the keyboard meets the very same error.
@@ -244,6 +245,15 @@ class iOSAppState: ObservableObject {
 
             flog("App: ready for dictation, waiting for the user to switch back")
             wakeProgress?.stage = .ready
+
+            // Nothing left to decide, so nothing to tap: leave the message up
+            // long enough to read, then get out of the way. The id check keeps
+            // a newer wake that started meanwhile on screen.
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard wakeProgress?.id == wake.id else { return }
+            withAnimation(.easeOut(duration: 0.25)) {
+                wakeProgress = nil
+            }
         }
     }
 

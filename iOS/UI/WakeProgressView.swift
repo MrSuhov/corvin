@@ -9,12 +9,14 @@ import SwiftUI
 struct WakeProgress {
     enum Stage {
         case waiting
-        /// Everything is up; the user switches back themselves.
+        /// Everything is up; the user switches back themselves. Closes on its own.
         case ready
-        /// Something never came up in time.
+        /// Something never came up in time. Stays until dismissed.
         case timedOut
     }
 
+    /// Tells one wake from the next, so a delayed close cannot dismiss a newer one.
+    let id = UUID()
     var listening = false
     var holdingBackground = false
     var modelLoaded = false
@@ -80,19 +82,19 @@ struct WakeProgressView: View {
         case .ready:
             explanation("wake.ready".localized)
         case .timedOut:
-            explanation("wake.timedOut".localized)
+            VStack(alignment: .leading, spacing: 12) {
+                explanation("wake.timedOut".localized)
+                Button("wake.dismiss".localized, action: onDismiss)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
         }
     }
 
     private func explanation(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(text)
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("wake.dismiss".localized, action: onDismiss)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-        }
+        Text(text)
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

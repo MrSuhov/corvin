@@ -52,6 +52,7 @@ struct MainView: View {
                 WakeProgressView(progress: progress) {
                     appState.wakeProgress = nil
                 }
+                .transition(.opacity)
             }
         }
     }

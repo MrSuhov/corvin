@@ -70,6 +70,24 @@ FluidAudio, executable `corvin-diarize`). Плюс изоляции: краш BN
   `~/Library/Application Support/Corvin/Models/diarization/`. Helper **не ходит в сеть**: он
   загружает модели только из этого каталога (`DiarizerModels.load(localSegmentationModel:localEmbeddingModel:)`)
   и не вызывает `prepareModels`, который умеет скачивать. Если моделей нет, helper завершается с ошибкой.
+- **Обновление через манифест.** Модели объявляются в том же `models.json` (hyperstack.ru), что и
+  модели whisper, в новом ключе верхнего уровня; `schemaVersion` остаётся 1 (старые клиенты
+  игнорируют неизвестный ключ):
+  ```json
+  "diarization": [{ "id": "fluid-offline-v1", "revision": "<HF commit>", "minAppVersion": "1.5.0",
+                    "helperAPI": 1, "sizeBytes": 21510001,
+                    "files": [{ "path": "Segmentation.mlmodelc/weights/weight.bin",
+                                "url": "https://huggingface.co/FluidInference/speaker-diarization-coreml/resolve/<commit>/…",
+                                "sha256": "…", "sizeBytes": 5959360 }, …] }]
+  ```
+  URL закреплены на коммит, а не `main`: обновление происходит только после публикации манифеста.
+  `scripts/generate-models-manifest.py` получает `--diarization-revision`: скачивает файлы ревизии,
+  считает sha256 (у мелких не-LFS файлов HF не отдаёт sha256), пишет секцию; `publish-models-manifest.sh`
+  валидирует её. Если в секции нет записи, приложение использует compiled-in fallback с той же структурой.
+  `helperAPI` — версия формата моделей, которую понимает встроенный `corvin-diarize`, чтобы новые модели
+  не попадали к старой сборке. Установка: скачивание во временный каталог → проверка sha256 → атомарная
+  замена `Models/diarization/`, запись в `InstalledModelStore` (ключ = id, sha = хэш списка файлов);
+  расхождение с манифестом → «Доступно обновление моделей диаризации».
 - Приложение: `macOS/Services/DiarizationClient.swift` — `Process`, парсинг stdout, отмена через
   `terminate()`, всё за `if #available(macOS 14, *)`.
 
@@ -85,7 +103,15 @@ FluidAudio, executable `corvin-diarize`). Плюс изоляции: краш BN
 - `SpeakerTranscriptBuilder` — чистая функция: слово → спикер по максимальному перекрытию
   (иначе ближайший сегмент); склейка подряд идущих слов одного спикера; короткие вставки < ~0.7 с
   без смены спикера не рвут абзац; спикеры нумеруются по первому появлению.
-- `RolesFormatter` — `[HH:MM:SS] Спикер N:\n<текст>\n\n`, слово «Спикер» локализуется.
+- Границы смены спикера сдвигаются к ближайшему концу предложения (`.?!…`) в окне ±1 с, иначе к
+  самой длинной паузе (спайк: таймкоды токенов whisper на ±0,3–0,5 с, DTW не улучшил и требует
+  выключить flash attention — не используем).
+- **Перебивки.** Whisper сам ставит « - » в начале реплики при смене говорящего, а диаризация
+  короткие (1–2 с) реплики сливает с соседом. Реплика дробится по таким тире (тире после конца
+  предложения); части получают спикера по доле перекрытия с сегментами диаризации (≥25%), а если
+  диаризация видит там одного — чередуются с предыдущим собеседником.
+- `RolesFormatter` — `[HH:MM:SS] Спикер N:\n<текст>\n\n`, слово «Спикер» локализуется,
+  ведущее « - » у реплики удаляется.
 
 ### 4. Реестр распознанных файлов — `macOS/Services/TranscriptRegistry.swift`
 JSON `~/Library/Application Support/Corvin/transcripts.json`:
@@ -115,7 +141,7 @@ JSON `~/Library/Application Support/Corvin/vocabularies.json`: `[{id, name, term
 
 ### 8. UI — `macOS/UI/Settings/TestTranscriptionView.swift`
 - В `fileSection`: галочка «Распознавание диалогов» (неактивна < macOS 14 с подписью
-  «Требуется macOS 14»; если моделей нет — «Скачать модели (~100 МБ)» с прогрессом);
+  «Требуется macOS 14»; если моделей нет — «Скачать модели (~22 МБ)» с прогрессом);
   Picker «Словарь: Нет / …» + «Изменить…» (sheet: список словарей, имя, многострочное поле терминов).
 - `JobRow` → строка файла: имя; бейджи `TXT` / `ROLES` (открыть в Finder); меню «Распознать снова»;
   во время работы — «Остановить и перезапустить»; фон оранжевый при изменённом источнике.

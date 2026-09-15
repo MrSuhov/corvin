@@ -403,3 +403,10 @@
 
 /* Dialog (speaker roles) transcripts */
 "roles.speaker" = "Спикер %d";
+"diarization.error.unsupportedSystem" = "Распознавание диалогов требует macOS 14 или новее.";
+"diarization.error.helperMissing" = "В этой сборке Corvin нет компонента распознавания говорящих.";
+"diarization.error.modelsMissing" = "Модели распознавания говорящих не скачаны.";
+"diarization.error.failed" = "Не удалось распознать говорящих: %@";
+"diarization.models.error.invalid" = "Список моделей распознавания говорящих повреждён.";
+"diarization.models.error.checksum" = "Скачанная модель распознавания говорящих повреждена. Попробуйте ещё раз.";
+"diarization.models.error.download" = "Не удалось скачать модели распознавания говорящих: %@";

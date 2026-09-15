@@ -31,7 +31,15 @@ for m in d["models"]:
     assert len(m["sha256"]) == 64, f"{m['id']}: bad sha256"
     assert m["sizeBytes"] > 0, f"{m['id']}: bad sizeBytes"
     assert m["downloadURL"].startswith("https://"), f"{m['id']}: insecure URL"
-print(f"  manifest OK — {len(d['models'])} models")
+for e in d.get("diarization", []):
+    assert e["files"], f"{e['id']}: no files"
+    assert isinstance(e["helperAPI"], int), f"{e['id']}: bad helperAPI"
+    for f in e["files"]:
+        assert len(f["sha256"]) == 64, f"{e['id']}/{f['path']}: bad sha256"
+        assert f["sizeBytes"] > 0, f"{e['id']}/{f['path']}: bad sizeBytes"
+        assert f["url"].startswith("https://"), f"{e['id']}/{f['path']}: insecure URL"
+        assert not f["path"].startswith("/") and ".." not in f["path"].split("/"), f"{e['id']}: unsafe path {f['path']}"
+print(f"  manifest OK — {len(d['models'])} models, {len(d.get('diarization', []))} diarization entries")
 PY
 
 if [ "$DRY_RUN" = true ]; then

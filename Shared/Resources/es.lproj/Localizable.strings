@@ -403,3 +403,10 @@
 
 /* Dialog (speaker roles) transcripts */
 "roles.speaker" = "Hablante %d";
+"diarization.error.unsupportedSystem" = "El reconocimiento de diálogos requiere macOS 14 o posterior.";
+"diarization.error.helperMissing" = "Esta versión de Corvin no incluye el componente de reconocimiento de hablantes.";
+"diarization.error.modelsMissing" = "Los modelos de reconocimiento de hablantes no están descargados.";
+"diarization.error.failed" = "No se pudo reconocer a los hablantes: %@";
+"diarization.models.error.invalid" = "La lista de modelos de reconocimiento de hablantes no es válida.";
+"diarization.models.error.checksum" = "Un modelo de reconocimiento de hablantes descargado está dañado. Inténtalo de nuevo.";
+"diarization.models.error.download" = "No se pudieron descargar los modelos de reconocimiento de hablantes: %@";

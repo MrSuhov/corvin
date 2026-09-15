@@ -403,3 +403,10 @@
 
 /* Dialog (speaker roles) transcripts */
 "roles.speaker" = "Speaker %d";
+"diarization.error.unsupportedSystem" = "Dialog recognition requires macOS 14 or later.";
+"diarization.error.helperMissing" = "This Corvin build does not include the speaker recognition component.";
+"diarization.error.modelsMissing" = "Speaker recognition models are not downloaded.";
+"diarization.error.failed" = "Speaker recognition failed: %@";
+"diarization.models.error.invalid" = "The speaker recognition model list is invalid.";
+"diarization.models.error.checksum" = "A downloaded speaker recognition model is damaged. Try again.";
+"diarization.models.error.download" = "Could not download speaker recognition models: %@";

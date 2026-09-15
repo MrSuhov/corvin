@@ -35,6 +35,17 @@ fi
 ARCHS=$(lipo -info "$BINARY" 2>&1)
 echo "  $ARCHS"
 
+# Step 2b: speaker-diarization helper. A separate package because FluidAudio
+# needs macOS 14 and Corvin targets 11; the app runs it only on 14+.
+echo "[2b/4] Building corvin-diarize helper..."
+(cd "$PROJECT_DIR/Helpers/Diarizer" && swift build -c release --arch arm64 --arch x86_64 2>&1 | grep -E "error:|Build complete" || true)
+DIARIZE_BINARY="$PROJECT_DIR/Helpers/Diarizer/.build/apple/Products/Release/corvin-diarize"
+if [ ! -f "$DIARIZE_BINARY" ]; then
+    echo "ERROR: corvin-diarize build failed"
+    exit 1
+fi
+echo "  $(lipo -info "$DIARIZE_BINARY" 2>&1)"
+
 # Step 3: Verify small model exists locally
 echo "[3/4] Checking small model..."
 if [ ! -f "$SMALL_MODEL" ]; then
@@ -51,6 +62,8 @@ rm -rf "$BUILD_DIR/Corvin.app"
 mkdir -p "$APP_DIR/MacOS" "$APP_DIR/Resources/Models"
 
 cp "$BINARY" "$APP_DIR/MacOS/"
+mkdir -p "$APP_DIR/Helpers"
+cp "$DIARIZE_BINARY" "$APP_DIR/Helpers/"
 cp "$PROJECT_DIR/macOS/Resources/Info.plist" "$APP_DIR/"
 
 # swift build does not substitute Xcode build-setting placeholders, so the copied
@@ -131,6 +144,8 @@ for xpc in "$SPARKLE_VER/XPCServices/"*.xpc; do
 done
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$SP"
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR/Frameworks/libswift_Concurrency.dylib"
+# Nested code is signed before the bundle that contains it.
+codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR/Helpers/corvin-diarize"
 
 codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$BUILD_DIR/Corvin.app/Contents/MacOS/Corvin"
 codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$BUILD_DIR/Corvin.app"

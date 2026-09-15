@@ -110,6 +110,9 @@ def repo_and_path(url: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(REPO_ROOT / "build/models.json"))
+    ap.add_argument("--diarization-revision", default=None,
+                    help="Hugging Face commit of the diarization models to publish "
+                         "(default: DIARIZATION_REVISION)")
     args = ap.parse_args()
 
     models = parse_swift_catalogue()
@@ -138,17 +141,81 @@ def main():
             print(f"  MISSING {mid}: {why}", file=sys.stderr)
         sys.exit("refusing to emit a manifest with unverifiable models")
 
+    diarization = diarization_entry(args.diarization_revision or DIARIZATION_REVISION)
+
     manifest = {
         "schemaVersion": SCHEMA_VERSION,
         "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "models": models,
+        # Ignored by clients that predate it (JSONDecoder skips unknown keys),
+        # so schemaVersion stays 1.
+        "diarization": [diarization],
     }
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
     total = sum(m["sizeBytes"] for m in models)
-    print(f"wrote {out} — {len(models)} models, {total/2**30:.1f} GiB catalogued")
+    print(f"wrote {out} — {len(models)} models, {total/2**30:.1f} GiB catalogued, "
+          f"diarization {diarization['id']} ({diarization['sizeBytes']/2**20:.1f} MiB)")
+
+
+# --- Speaker diarization models (macOS, corvin-diarize) ----------------------
+#
+# A directory of CoreML bundles rather than one file, so the entry lists every
+# file. Hugging Face only reports sha256 for LFS files, so each file is
+# downloaded (~22 MB total) and hashed here; LFS hashes are cross-checked.
+# URLs are pinned to the revision, never `main`: clients only move to new
+# models when a manifest naming them is published.
+
+DIARIZATION_REPO = "FluidInference/speaker-diarization-coreml"
+DIARIZATION_REVISION = "1ed7a662fdc7109e36d822db793ee6eebdaf8594"
+DIARIZATION_PATHS = ["Segmentation.mlmodelc", "FBank.mlmodelc", "Embedding.mlmodelc",
+                     "PldaRho.mlmodelc", "plda-parameters.json"]
+# Layout version corvin-diarize reads (DiarizationClient.helperAPI). Bump both
+# together when the helper needs a different set of files.
+DIARIZATION_HELPER_API = 1
+DIARIZATION_MIN_APP_VERSION = "1.5.0"
+
+
+def diarization_entry(revision: str) -> dict:
+    import hashlib
+
+    tree_url = "https://huggingface.co/api/models/{repo}/tree/{rev}/{path}?recursive=true"
+    root = fetch_json(f"https://huggingface.co/api/models/{DIARIZATION_REPO}/tree/{revision}")
+    listed = []
+    for path in DIARIZATION_PATHS:
+        top = next((e for e in root if e["path"] == path), None)
+        if top is None:
+            sys.exit(f"diarization: {path} not found at {revision}")
+        if top["type"] == "file":
+            listed.append(top)
+        else:
+            listed += [e for e in fetch_json(tree_url.format(repo=DIARIZATION_REPO, rev=revision, path=path))
+                       if e["type"] == "file"]
+
+    print(f"  hashing {len(listed)} diarization files at {revision[:7]}…")
+    files = []
+    for e in listed:
+        url = f"https://huggingface.co/{DIARIZATION_REPO}/resolve/{revision}/{e['path']}"
+        with urllib.request.urlopen(url, timeout=120) as r:
+            body = r.read()
+        sha = hashlib.sha256(body).hexdigest()
+        lfs = (e.get("lfs") or {}).get("oid")
+        if lfs and lfs != sha:
+            sys.exit(f"diarization: {e['path']} sha256 {sha} != LFS {lfs}")
+        if len(body) != e["size"]:
+            sys.exit(f"diarization: {e['path']} size {len(body)} != listed {e['size']}")
+        files.append({"path": e["path"], "url": url, "sha256": sha, "sizeBytes": len(body)})
+
+    return {
+        "id": f"fluid-offline-{revision[:7]}",
+        "revision": revision,
+        "minAppVersion": DIARIZATION_MIN_APP_VERSION,
+        "helperAPI": DIARIZATION_HELPER_API,
+        "sizeBytes": sum(f["sizeBytes"] for f in files),
+        "files": files,
+    }
 
 
 if __name__ == "__main__":

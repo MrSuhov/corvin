@@ -147,6 +147,12 @@ enum ModelCatalog {
         try? Data(contentsOf: cacheFile(directory))
     }
 
+    /// The last good manifest on disk, for sections `load` does not decode
+    /// itself (the macOS diarization models).
+    static func cachedManifestData(in directory: URL) -> Data? {
+        readCache(from: directory)
+    }
+
     // MARK: - Hashing
 
     /// Streams the file so a 3 GB model does not have to fit in memory.

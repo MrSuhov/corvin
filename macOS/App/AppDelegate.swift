@@ -12,6 +12,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var layoutSwitchService: LayoutSwitchService!
     private(set) var transcriptionEngine: TranscriptionEngine!
     private(set) var fileQueue: FileTranscriptionQueue!
+    private var diarizationModels: DiarizationModelStore!
+    private var transcriptRegistry: TranscriptRegistry!
+    private var vocabularyStore: VocabularyStore!
     private var dictationCoordinator: DictationCoordinator!
 
     private var statusBarController: StatusBarController!
@@ -61,9 +64,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // App-lifetime owner: the settings pane that drives this queue is torn
         // down whenever the user switches tabs or the interface language, so a
         // view-owned queue would die mid-batch.
+        diarizationModels = DiarizationModelStore()
+        transcriptRegistry = TranscriptRegistry()
+        vocabularyStore = VocabularyStore()
         fileQueue = FileTranscriptionQueue(engine: transcriptionEngine,
                                           sessionManager: sessionManager,
-                                          modelManager: modelManager)
+                                          modelManager: modelManager,
+                                          diarizationModels: diarizationModels,
+                                          registry: transcriptRegistry,
+                                          vocabularies: vocabularyStore)
         hotkeyService = HotkeyService()
         dictationCoordinator = DictationCoordinator(
             sessionManager: sessionManager,
@@ -239,6 +248,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .environmentObject(historyStore)
             .environmentObject(transcriptionEngine as TranscriptionEngine)
             .environmentObject(fileQueue as FileTranscriptionQueue)
+            .environmentObject(diarizationModels as DiarizationModelStore)
+            .environmentObject(transcriptRegistry as TranscriptRegistry)
+            .environmentObject(vocabularyStore as VocabularyStore)
 
         let window = NSWindow(
             // Match SettingsView's fixed SwiftUI frame exactly so NSHostingView

@@ -8,6 +8,11 @@ struct TestTranscriptionView: View {
     @EnvironmentObject var modelManager: ModelManager
     @EnvironmentObject var transcriptionEngine: TranscriptionEngine
     @EnvironmentObject var fileQueue: FileTranscriptionQueue
+    @EnvironmentObject var diarizationModels: DiarizationModelStore
+    @EnvironmentObject var registry: TranscriptRegistry
+    @EnvironmentObject var vocabularies: VocabularyStore
+
+    @State private var isEditingVocabularies = false
 
     @State private var resultText = ""
     @State private var isRecording = false
@@ -33,6 +38,11 @@ struct TestTranscriptionView: View {
                     queueSection
                 }
 
+                if !registry.records.isEmpty {
+                    Divider()
+                    historySection
+                }
+
                 if let error = errorMessage {
                     Text(error)
                         .foregroundColor(.red)
@@ -43,6 +53,10 @@ struct TestTranscriptionView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            diarizationModels.refresh()
+            registry.refreshSourceStates()
+        }
         // The whole pane is the drop target, not a separate well.
         .contentShape(Rectangle())
         .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
@@ -175,10 +189,105 @@ struct TestTranscriptionView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
 
+            dialogSection
+
+            vocabularySection
+
             if !fileQueue.blockedDirectories.isEmpty {
                 blockedBanner
             }
         }
+    }
+
+    // MARK: - Vocabulary
+
+    private var vocabularySection: some View {
+        HStack(spacing: 8) {
+            Text("test.vocabulary.label".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Picker("test.vocabulary.label".localized, selection: $vocabularies.activeID) {
+                Text("test.vocabulary.none".localized).tag(UUID?.none)
+                ForEach(vocabularies.vocabularies) { vocabulary in
+                    Text(vocabulary.name).tag(UUID?.some(vocabulary.id))
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 220)
+            Button("test.vocabulary.edit".localized) { isEditingVocabularies = true }
+                .modifier(BorderedButtonCompat())
+                .controlSize(.small)
+        }
+        .sheet(isPresented: $isEditingVocabularies) {
+            VocabularyEditorView()
+                .environmentObject(vocabularies)
+                .environmentObject(transcriptionEngine)
+        }
+    }
+
+    // MARK: - Dialog mode
+
+    private var dialogSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("test.dialog.toggle".localized, isOn: $fileQueue.dialogMode)
+                .disabled(!DiarizationClient.isSupportedSystem)
+
+            if !DiarizationClient.isSupportedSystem {
+                secondaryCaption("test.dialog.requiresMacOS14".localized)
+            } else if fileQueue.dialogMode {
+                dialogModelsStatus
+            } else {
+                secondaryCaption("test.dialog.hint".localized)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var dialogModelsStatus: some View {
+        if let progress = diarizationModels.progress {
+            HStack(spacing: 8) {
+                ProgressView(value: progress)
+                    .frame(width: 120)
+                secondaryCaption("test.dialog.downloading".localized)
+                Button("test.dialog.cancel".localized) { diarizationModels.cancel() }
+                    .modifier(BorderedButtonCompat())
+                    .controlSize(.small)
+            }
+        } else if !diarizationModels.isInstalled {
+            HStack(spacing: 8) {
+                secondaryCaption("test.dialog.modelsNeeded".localized(with: modelsSizeLabel))
+                Button("test.dialog.download".localized) { Task { await diarizationModels.install() } }
+                    .modifier(BorderedButtonCompat())
+                    .controlSize(.small)
+            }
+        } else if diarizationModels.updateAvailable {
+            HStack(spacing: 8) {
+                secondaryCaption("test.dialog.updateAvailable".localized)
+                Button("test.dialog.update".localized) { Task { await diarizationModels.install() } }
+                    .modifier(BorderedButtonCompat())
+                    .controlSize(.small)
+            }
+        } else {
+            secondaryCaption("test.dialog.hint".localized)
+        }
+
+        if let error = diarizationModels.error {
+            Text(error.text)
+                .font(.caption)
+                .foregroundColor(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var modelsSizeLabel: String {
+        ByteCountFormatter.string(fromByteCount: diarizationModels.currentEntry.sizeBytes, countStyle: .file)
+    }
+
+    private func secondaryCaption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var outputDirectoryLabel: String {
@@ -235,7 +344,37 @@ struct TestTranscriptionView: View {
                 ForEach(fileQueue.jobs) { job in
                     JobRow(job: job,
                            onReveal: { reveal(job) },
-                           onSaveAs: { fileQueue.saveAs(jobID: job.id) })
+                           onSaveAs: { fileQueue.saveAs(jobID: job.id) },
+                           onRestart: { fileQueue.stopAndRestart(job.id) })
+                }
+            }
+        }
+    }
+
+    // MARK: - Transcribed files
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("test.history.title".localized)
+                    .font(.headline)
+                Spacer()
+                Button("test.history.clear".localized) { registry.removeAll() }
+                    .modifier(BorderedButtonCompat())
+                    .controlSize(.small)
+            }
+
+            LazyVStack(alignment: .leading, spacing: 4) {
+                ForEach(registry.records) { record in
+                    RecordRow(record: record,
+                              plainState: registry.state(of: record, .plain),
+                              rolesState: registry.state(of: record, .roles),
+                              isQueued: fileQueue.jobs.contains {
+                                  !$0.status.isFinished && $0.url.standardizedFileURL.path == record.sourcePath
+                              },
+                              onReveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) },
+                              onRerun: { fileQueue.rerun(record.sourceURL) },
+                              onRemove: { registry.remove(record) })
                 }
             }
         }
@@ -359,6 +498,7 @@ private struct JobRow: View {
     let job: FileTranscriptionQueue.Job
     let onReveal: () -> Void
     let onSaveAs: () -> Void
+    let onRestart: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -373,9 +513,21 @@ private struct JobRow: View {
                 .frame(minWidth: 90, alignment: .leading)
                 .layoutPriority(1)
 
+            if job.mode == .roles {
+                ModeBadge(title: "test.history.badge.roles".localized, highlighted: false)
+            }
+
             detail
 
             Spacer(minLength: 0)
+
+            if !job.status.isFinished {
+                Button(action: onRestart) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.plain)
+                .help("test.queue.restart".localized)
+            }
 
             if job.outputURL != nil {
                 Button(action: onReveal) {
@@ -400,6 +552,14 @@ private struct JobRow: View {
             caption("test.status.waitingMic".localized)
         case .decoding:
             caption("test.status.decoding".localized)
+        case .diarizing:
+            HStack(spacing: 6) {
+                if job.progress.total > 1 {
+                    ProgressView(value: Double(job.progress.current), total: Double(job.progress.total))
+                        .frame(width: 60)
+                }
+                caption("test.status.diarizing".localized)
+            }
         case .transcribing:
             HStack(spacing: 6) {
                 if job.progress.total > 1 {
@@ -438,7 +598,7 @@ private struct JobRow: View {
     private var iconName: String {
         switch job.status {
         case .pending, .waitingForMic: return "clock"
-        case .decoding, .transcribing: return "waveform"
+        case .decoding, .diarizing, .transcribing: return "waveform"
         case .saved: return "checkmark.circle.fill"
         case .savedToFallback: return "exclamationmark.circle.fill"
         case .empty: return "minus.circle"
@@ -454,6 +614,105 @@ private struct JobRow: View {
         case .failed: return .red
         default: return .secondary
         }
+    }
+}
+
+// MARK: - Transcribed file row
+
+private struct RecordRow: View {
+    let record: TranscriptRegistry.Record
+    let plainState: TranscriptRegistry.SourceState?
+    let rolesState: TranscriptRegistry.SourceState?
+    let isQueued: Bool
+    let onReveal: (URL) -> Void
+    let onRerun: () -> Void
+    let onRemove: () -> Void
+
+    private var isMissing: Bool { plainState == .missing || rolesState == .missing }
+    private var isChanged: Bool { plainState == .changed || rolesState == .changed }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: isMissing ? "questionmark.circle" : isChanged ? "exclamationmark.triangle.fill" : "doc.text")
+                .foregroundColor(isChanged ? .orange : .secondary)
+                .frame(width: 14)
+
+            Text(record.sourceURL.lastPathComponent)
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(minWidth: 90, alignment: .leading)
+                .layoutPriority(1)
+                .help(record.sourcePath)
+
+            if let plain = record.plain {
+                badge("test.history.badge.plain".localized, plain, plainState)
+            }
+            if let roles = record.roles {
+                badge("test.history.badge.roles".localized, roles, rolesState)
+            }
+
+            if isMissing {
+                Text("test.history.missing".localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            } else if isChanged {
+                Text("test.history.changed".localized)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Button(action: onRerun) {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.plain)
+            .disabled(isMissing || isQueued)
+            .help("test.history.rerun".localized)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .help("test.history.remove".localized)
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.orange.opacity(isChanged ? 0.15 : 0))
+        )
+    }
+
+    /// Opens the transcript in Finder; orange when the audio changed after it
+    /// was made.
+    private func badge(_ title: String, _ variant: TranscriptRegistry.Variant,
+                       _ state: TranscriptRegistry.SourceState?) -> some View {
+        Button { onReveal(variant.outputURL) } label: {
+            ModeBadge(title: title, highlighted: state == .changed)
+        }
+        .buttonStyle(.plain)
+        .help(variant.outputURL.lastPathComponent)
+    }
+}
+
+private struct ModeBadge: View {
+    let title: String
+    let highlighted: Bool
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 9, weight: .semibold))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .foregroundColor(highlighted ? .orange : .secondary)
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(highlighted ? Color.orange : Color.secondary, lineWidth: 1)
+            )
     }
 }
 

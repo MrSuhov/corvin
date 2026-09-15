@@ -82,9 +82,12 @@ UNTRANSLATED_OK = {
         "common.duration.seconds", "menu.status.error",
         "models.quality.normal", "models.recommended.short",
         "settings.indicator.size.normal", "settings.tab.general", "status.error",
+        # File-type badges: TXT is the extension, "roles" is also Spanish.
+        "test.history.badge.plain", "test.history.badge.roles",
     },
     "ru": {
         "app.name", "pro.title", "settings.pro.title", "settings.pro.proIcon",
+        "test.history.badge.plain",
     },
 }
 

@@ -19,6 +19,8 @@ final class FileTranscriptionQueue: ObservableObject {
         /// Parked so the fn-hotkey dictation flow can have the engine.
         case waitingForMic
         case decoding
+        /// Dialog mode: finding who speaks when, before whisper runs.
+        case diarizing
         case transcribing
         case saved
         /// Written to Application Support because the target folder refused it.
@@ -26,13 +28,13 @@ final class FileTranscriptionQueue: ObservableObject {
         /// Transcribed to nothing — silence, or too short to run at all.
         case empty
         case failed
-        /// Interrupted by a second press of Stop.
+        /// Interrupted by a second press of Stop, or by a restart.
         case cancelled
 
         var isFinished: Bool {
             switch self {
             case .saved, .savedToFallback, .empty, .failed, .cancelled: return true
-            case .pending, .waitingForMic, .decoding, .transcribing: return false
+            case .pending, .waitingForMic, .decoding, .diarizing, .transcribing: return false
             }
         }
     }
@@ -40,6 +42,11 @@ final class FileTranscriptionQueue: ObservableObject {
     struct Job: Identifiable, Equatable {
         let id = UUID()
         let url: URL
+        /// Fixed when queued; the checkbox only affects new jobs and restarts.
+        var mode: TranscriptMode
+        /// Snapshot of the active vocabulary when queued, so editing it later
+        /// does not change a job already waiting.
+        var vocabulary: Vocabulary? = nil
         var status: Status = .pending
         var progress: ChunkProgress = .none
         var startedAt: Date?
@@ -65,7 +72,16 @@ final class FileTranscriptionQueue: ObservableObject {
         }
     }
 
+    /// The "Dialog recognition" checkbox: new jobs write `<name>_roles.txt`,
+    /// split into one paragraph per speaker turn.
+    @Published var dialogMode = false {
+        didSet {
+            UserDefaults.standard.set(dialogMode, forKey: Self.dialogModeKey)
+        }
+    }
+
     static let outputDirectoryKey = "transcriptOutputDirectory"
+    static let dialogModeKey = "fileTranscription.dialogMode"
 
     /// Files this large are refused before decoding. `AudioFileDecoder` builds
     /// an `AVAudioPCMBuffer` over the whole file at its source rate and channel
@@ -79,24 +95,37 @@ final class FileTranscriptionQueue: ObservableObject {
     private let engine: TranscriptionEngine
     private let sessionManager: SessionManager
     private let modelManager: ModelManager
+    private let diarizationModels: DiarizationModelStore
+    private let registry: TranscriptRegistry
+    private let vocabularies: VocabularyStore
 
     /// Mirror of `sessionManager.state` that is safe to read from the whisper
     /// worker thread; `@Published` properties are only safe on the main queue.
     private let micBusy = AtomicFlag()
-    /// Mirror of `abortRequested` for the whisper worker thread, which polls
-    /// it between chunks and from inside `whisper_full`.
+    /// Tells the job in flight to stop, polled between chunks, from inside
+    /// `whisper_full` and by the diarization helper's watcher. Set by a second
+    /// Stop (for good) or by a restart (for that one job).
     private let cancelCurrent = AtomicFlag()
+    /// The job to queue again, with the current settings, once its
+    /// cancellation lands.
+    private var restartJobID: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var runner: Task<Void, Never>?
 
-    init(engine: TranscriptionEngine, sessionManager: SessionManager, modelManager: ModelManager) {
+    init(engine: TranscriptionEngine, sessionManager: SessionManager, modelManager: ModelManager,
+         diarizationModels: DiarizationModelStore, registry: TranscriptRegistry,
+         vocabularies: VocabularyStore) {
         self.engine = engine
         self.sessionManager = sessionManager
         self.modelManager = modelManager
+        self.diarizationModels = diarizationModels
+        self.registry = registry
+        self.vocabularies = vocabularies
 
         if let path = UserDefaults.standard.string(forKey: Self.outputDirectoryKey), !path.isEmpty {
             self.outputDirectory = URL(fileURLWithPath: path, isDirectory: true)
         }
+        self.dialogMode = UserDefaults.standard.bool(forKey: Self.dialogModeKey)
 
         sessionManager.$state
             .sink { [weak self] state in self?.micBusy.value = (state != .idle) }
@@ -119,6 +148,13 @@ final class FileTranscriptionQueue: ObservableObject {
     var hasFinishedJobs: Bool { jobs.contains { $0.status.isFinished } }
     var unsavedJobs: [Job] { jobs.filter { $0.status == .failed && $0.text?.isEmpty == false } }
 
+    /// The mode a job queued right now gets. Dialog mode needs macOS 14; on
+    /// older systems the checkbox is disabled, and a value synced from a newer
+    /// Mac must not turn every job into a failure.
+    var currentMode: TranscriptMode {
+        dialogMode && DiarizationClient.isSupportedSystem ? .roles : .plain
+    }
+
     /// Where a given file's transcript should go.
     func destination(for url: URL) -> URL {
         outputDirectory ?? url.deletingLastPathComponent()
@@ -127,15 +163,30 @@ final class FileTranscriptionQueue: ObservableObject {
     // MARK: - Enqueueing
 
     func enqueue(urls: [URL]) {
+        enqueue(urls: urls, mode: currentMode)
+    }
+
+    /// "Transcribe again" on a file from the transcribed list, with the
+    /// current checkbox.
+    func rerun(_ url: URL) {
+        enqueue(urls: [url], mode: currentMode)
+    }
+
+    private func enqueue(urls: [URL], mode: TranscriptMode) {
         let accepted = urls.compactMap(Self.acceptableAudioURL)
         guard !accepted.isEmpty else { return }
 
-        let known = Set(jobs.map { $0.url.standardizedFileURL })
-        let fresh = accepted.filter { !known.contains($0.standardizedFileURL) }
+        // The same file in the same mode already waiting or running adds
+        // nothing. A finished row makes way instead, so queuing a file again
+        // transcribes it again.
+        let busy = Set(jobs.filter { !$0.status.isFinished && $0.mode == mode }.map { $0.url.standardizedFileURL })
+        let fresh = accepted.filter { !busy.contains($0.standardizedFileURL) }
         guard !fresh.isEmpty else { return }
 
-        jobs.append(contentsOf: fresh.map { Job(url: $0) })
-        flog("FileQueue: enqueued \(fresh.count) file(s), \(jobs.count) total")
+        let freshSet = Set(fresh.map { $0.standardizedFileURL })
+        jobs.removeAll { $0.status.isFinished && $0.mode == mode && freshSet.contains($0.url.standardizedFileURL) }
+        jobs.append(contentsOf: fresh.map { Job(url: $0, mode: mode, vocabulary: vocabularies.active) })
+        flog("FileQueue: enqueued \(fresh.count) file(s) as \(mode.rawValue), \(jobs.count) total")
 
         checkWriteAccess(for: fresh)
         start()
@@ -285,6 +336,26 @@ final class FileTranscriptionQueue: ObservableObject {
         }
     }
 
+    /// Run a job again with the current settings — typically after flipping
+    /// dialog mode once it had started. A running job is interrupted and takes
+    /// its place again at the same position; the rest of the queue is untouched.
+    func stopAndRestart(_ jobID: UUID) {
+        guard let job = self[jobID] else { return }
+        switch job.status {
+        case .pending:
+            update(jobID) {
+                $0.mode = currentMode
+                $0.vocabulary = vocabularies.active
+            }
+        case .waitingForMic, .decoding, .diarizing, .transcribing:
+            restartJobID = jobID
+            cancelCurrent.value = true
+            flog("FileQueue: restarting \(job.url.lastPathComponent) as \(currentMode.rawValue)")
+        case .saved, .savedToFallback, .empty, .failed, .cancelled:
+            enqueue(urls: [job.url])
+        }
+    }
+
     func clearFinished() {
         jobs.removeAll { $0.status.isFinished }
         if jobs.isEmpty { blockedDirectories = [] }
@@ -313,6 +384,9 @@ final class FileTranscriptionQueue: ObservableObject {
                 return
             }
             await process(next.id)
+            // A restart cancels only the job it targets. After a second Stop
+            // the flag stays up and the loop ends on `stopRequested` anyway.
+            if !abortRequested { cancelCurrent.value = false }
         }
     }
 
@@ -320,7 +394,10 @@ final class FileTranscriptionQueue: ObservableObject {
     /// between awaits (a new drop appends, "Clear" removes finished rows), so a
     /// captured index would drift onto the wrong job.
     private func process(_ jobID: UUID) async {
-        guard let url = self[jobID]?.url else { return }
+        guard let job = self[jobID] else { return }
+        let url = job.url
+        let mode = job.mode
+        let vocabulary = job.vocabulary
         update(jobID) { $0.startedAt = Date() }
 
         // Let the hotkey dictation flow finish before starting a new file.
@@ -331,12 +408,16 @@ final class FileTranscriptionQueue: ObservableObject {
             }
         }
         if cancelCurrent.value {
-            finish(jobID, .cancelled)
+            finishCancelled(jobID)
             return
         }
 
         guard modelManager.activeModel != nil else {
             finish(jobID, .failed, error: "test.noModel".localized)
+            return
+        }
+        if mode == .roles, let problem = diarizationProblem() {
+            finish(jobID, .failed, error: problem)
             return
         }
 
@@ -347,6 +428,10 @@ final class FileTranscriptionQueue: ObservableObject {
                    error: AudioFileDecoder.DecoderError.fileTooLarge(url.lastPathComponent).localizedDescription)
             return
         }
+
+        // What the source looked like as it was read: the transcribed list
+        // compares against this to flag a file edited afterwards.
+        let stamp = TranscriptRegistry.SourceStamp.read(url)
 
         update(jobID) { $0.status = .decoding }
         let pcm: Data
@@ -363,28 +448,73 @@ final class FileTranscriptionQueue: ObservableObject {
 
         // Decoding can't be interrupted, but there is no point starting whisper.
         if cancelCurrent.value {
-            finish(jobID, .cancelled)
+            finishCancelled(jobID)
             return
         }
 
-        update(jobID) { $0.status = .transcribing }
-        let busy = micBusy
         let cancel = cancelCurrent
-        let result: TranscriptionResult
+        let progress: (Int, Int) -> Void = { [weak self] current, total in
+            Task { @MainActor in
+                self?.update(jobID) { $0.progress = ChunkProgress(current: current, total: total) }
+            }
+        }
+
+        // Diarization first: it takes seconds, and a missing model or helper
+        // should surface before minutes of whisper rather than after.
+        var speakers: [SpeakerSegment] = []
+        if mode == .roles {
+            update(jobID) { $0.status = .diarizing }
+            do {
+                speakers = try await DiarizationClient.diarize(
+                    pcm: pcm,
+                    modelsDirectory: diarizationModels.directory,
+                    onProgress: progress,
+                    shouldCancel: { cancel.value }
+                )
+            } catch is CancellationError {
+                finishCancelled(jobID)
+                return
+            } catch {
+                flog("FileQueue: diarization failed for \(url.lastPathComponent): \(error)")
+                finish(jobID, .failed, error: error.localizedDescription)
+                return
+            }
+        }
+
+        update(jobID) {
+            $0.status = .transcribing
+            $0.progress = .none
+        }
+
+        var prompt: String?
+        if let terms = vocabulary?.terms, !terms.isEmpty {
+            let engine = self.engine
+            do {
+                let fitted = try await Task.detached(priority: .utility) {
+                    try engine.fitPrompt(terms: terms)
+                }.value
+                prompt = fitted.prompt
+                flog("FileQueue: vocabulary '\(vocabulary?.name ?? "")': \(fitted.used) of \(terms.count) terms fit the prompt")
+            } catch {
+                // Without the model there is nothing to transcribe either;
+                // let transcribeTimed report that.
+                flog("FileQueue: could not fit vocabulary prompt: \(error)")
+            }
+        }
+
+        let busy = micBusy
+        let result: TimedTranscriptionResult
         do {
-            result = try await engine.transcribe(
+            result = try await engine.transcribeTimed(
                 audioData: pcm,
-                onProgress: { [weak self] current, total in
-                    Task { @MainActor in
-                        self?.update(jobID) { $0.progress = ChunkProgress(current: current, total: total) }
-                    }
-                },
+                options: TranscriptionOptions(prompt: prompt, wordTimestamps: mode == .roles),
+                onProgress: progress,
                 shouldYield: { busy.value },
                 shouldCancel: { cancel.value }
             )
         } catch is CancellationError {
             flog("FileQueue: transcription of \(url.lastPathComponent) interrupted")
-            finish(jobID, .cancelled)
+            finishCancelled(jobID)
             return
         } catch {
             flog("FileQueue: transcribe failed for \(url.lastPathComponent): \(error)")
@@ -392,19 +522,27 @@ final class FileTranscriptionQueue: ObservableObject {
             return
         }
 
-        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
+        let plainText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !plainText.isEmpty else {
             finish(jobID, .empty)
             return
+        }
+        let text: String
+        if mode == .roles, !result.words.isEmpty {
+            text = RolesFormatter.format(SpeakerTranscriptBuilder.build(words: result.words, segments: speakers))
+        } else {
+            text = plainText
         }
         update(jobID) { $0.text = text }
 
         do {
             let output = try TranscriptSaver.write(text: text,
                                                    audioName: url.lastPathComponent,
+                                                   suffix: mode.fileSuffix,
                                                    into: destination(for: url))
             update(jobID) { $0.outputURL = output }
             finish(jobID, .saved)
+            remember(url, mode: mode, output: output, stamp: stamp, vocabulary: vocabulary)
         } catch {
             flog("FileQueue: save failed for \(url.lastPathComponent): \(error)")
             // Don't lose a transcript that cost minutes to produce. Application
@@ -413,13 +551,35 @@ final class FileTranscriptionQueue: ObservableObject {
             do {
                 let output = try TranscriptSaver.write(text: text,
                                                        audioName: url.lastPathComponent,
+                                                       suffix: mode.fileSuffix,
                                                        into: TranscriptSaver.fallbackDirectory)
                 update(jobID) { $0.outputURL = output }
                 finish(jobID, .savedToFallback)
+                remember(url, mode: mode, output: output, stamp: stamp, vocabulary: vocabulary)
             } catch {
                 finish(jobID, .failed, error: error.localizedDescription)
             }
         }
+    }
+
+    /// Why dialog mode cannot run right now, if it cannot.
+    private func diarizationProblem() -> String? {
+        if !DiarizationClient.isSupportedSystem {
+            return DiarizationClient.DiarizationError.unsupportedSystem.localizedDescription
+        }
+        if DiarizationClient.helperURL == nil {
+            return DiarizationClient.DiarizationError.helperMissing.localizedDescription
+        }
+        if !diarizationModels.isInstalled {
+            return DiarizationClient.DiarizationError.modelsMissing.localizedDescription
+        }
+        return nil
+    }
+
+    private func remember(_ url: URL, mode: TranscriptMode, output: URL,
+                          stamp: TranscriptRegistry.SourceStamp?, vocabulary: Vocabulary?) {
+        guard let stamp else { return }
+        registry.add(source: url, mode: mode, output: output, stamp: stamp, dictionaryName: vocabulary?.name)
     }
 
     private subscript(jobID: UUID) -> Job? {
@@ -438,6 +598,19 @@ final class FileTranscriptionQueue: ObservableObject {
             $0.progress = .none
             $0.startedAt = nil
         }
+    }
+
+    /// A cancelled job that `stopAndRestart` asked for comes back as a fresh
+    /// pending job in the same place, with the settings in force now.
+    private func finishCancelled(_ jobID: UUID) {
+        guard restartJobID == jobID,
+              let index = jobs.firstIndex(where: { $0.id == jobID }) else {
+            finish(jobID, .cancelled)
+            return
+        }
+        restartJobID = nil
+        let url = jobs[index].url
+        jobs[index] = Job(url: url, mode: currentMode, vocabulary: vocabularies.active)
     }
 
     // MARK: - Manual saving
@@ -462,6 +635,7 @@ final class FileTranscriptionQueue: ObservableObject {
             do {
                 let output = try TranscriptSaver.write(text: text,
                                                        audioName: job.url.lastPathComponent,
+                                                       suffix: job.mode.fileSuffix,
                                                        into: directory)
                 jobs[index].outputURL = output
                 jobs[index].status = .saved
@@ -478,7 +652,7 @@ final class FileTranscriptionQueue: ObservableObject {
 
         let panel = NSSavePanel()
         panel.nameFieldStringValue = (jobs[index].url.lastPathComponent as NSString)
-            .deletingPathExtension + ".txt"
+            .deletingPathExtension + jobs[index].mode.fileSuffix + ".txt"
         panel.canCreateDirectories = true
 
         NSApp.activate(ignoringOtherApps: true)

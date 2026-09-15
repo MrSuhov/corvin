@@ -115,10 +115,13 @@ enum TranscriptSaver {
         return base.appendingPathComponent("Corvin/Transcripts", isDirectory: true)
     }
 
-    /// Write `text` as `<audio basename>.txt` in `directory`, adding `_1`, `_2`, …
-    /// until the name is free. Returns the URL actually written.
+    /// Write `text` as `<audio basename><suffix>.txt` in `directory`, adding
+    /// `_1`, `_2`, … until the name is free. Returns the URL actually written.
+    ///
+    /// - Parameter suffix: tells an audio file's transcripts apart, e.g.
+    ///   `_roles` for the speaker-split one (`talk.txt` vs `talk_roles.txt`).
     @discardableResult
-    static func write(text: String, audioName: String, into directory: URL) throws -> URL {
+    static func write(text: String, audioName: String, suffix: String = "", into directory: URL) throws -> URL {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         // UTF-8, LF, one trailing newline, no BOM.
@@ -126,7 +129,7 @@ enum TranscriptSaver {
         if !body.hasSuffix("\n") { body += "\n" }
         let data = Data(body.utf8)
 
-        let base = safeBaseName(from: audioName)
+        let base = safeBaseName(from: audioName, suffix: suffix)
 
         for index in 0...999 {
             let name = index == 0 ? "\(base).txt" : "\(base)_\(index).txt"
@@ -152,17 +155,18 @@ enum TranscriptSaver {
         return unique
     }
 
-    /// Trim the basename so that basename + "_999.txt" still fits the 255-byte
-    /// filename limit on APFS/HFS+.
-    private static func safeBaseName(from audioName: String) -> String {
+    /// Trim the basename so that basename + suffix + "_999.txt" still fits the
+    /// 255-byte filename limit on APFS/HFS+. The suffix is never trimmed: it is
+    /// what tells the two transcripts of one file apart.
+    private static func safeBaseName(from audioName: String, suffix: String) -> String {
         let stem = (audioName as NSString).deletingPathExtension
         let base = stem.isEmpty ? "transcript" : stem
-        let budget = 255 - "_999.txt".utf8.count
+        let budget = 255 - "_999.txt".utf8.count - suffix.utf8.count
 
         var trimmed = base
         while trimmed.utf8.count > budget, !trimmed.isEmpty {
             trimmed.removeLast()
         }
-        return trimmed.isEmpty ? "transcript" : trimmed
+        return (trimmed.isEmpty ? "transcript" : trimmed) + suffix
     }
 }

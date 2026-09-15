@@ -200,6 +200,38 @@ class TranscriptionEngine: ObservableObject {
         }
     }
 
+    /// The longest leading run of `terms` whose prompt fits in `maxTokens`,
+    /// and that prompt.
+    ///
+    /// Whisper keeps at most n_text_ctx/2 (224) prompt tokens and silently
+    /// drops the *start* of a longer prompt — the terms listed first, which
+    /// users put first because they matter most. Trimming here keeps them and
+    /// tells the caller how many made it.
+    ///
+    /// Blocks: may load the model and takes `whisperLock`. Call off the main thread.
+    func fitPrompt(terms: [String], maxTokens: Int = 200) throws -> (prompt: String?, used: Int) {
+        guard !terms.isEmpty else { return (nil, 0) }
+        _ = try prepareContext()
+
+        whisperLock.lock()
+        defer { whisperLock.unlock() }
+        guard let ctx = whisperContext else { throw TranscriptionError.noModel }
+
+        var fitted: (prompt: String?, used: Int) = (nil, 0)
+        for count in 1...terms.count {
+            let candidate = Self.prompt(from: Array(terms.prefix(count)))
+            guard whisper_token_count(ctx, candidate) <= maxTokens else { break }
+            fitted = (candidate, count)
+        }
+        return fitted
+    }
+
+    /// Terms as the decoder should see them: a plain comma-separated list
+    /// reads like prior speech, which is what an initial prompt stands for.
+    static func prompt(from terms: [String]) -> String {
+        terms.joined(separator: ", ") + "."
+    }
+
     /// `transcribe(audioData:)` for audio that is already 16 kHz mono Float32.
     func transcribe(samples: [Float],
                     onProgress: ((Int, Int) -> Void)? = nil,

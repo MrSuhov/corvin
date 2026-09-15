@@ -24,7 +24,10 @@ make project       # Generate Xcode project via XcodeGen
 
 - `scripts/build-whisper-macos.sh` — whisper.cpp universal (arm64 + x86_64) for macOS
 - `scripts/build-whisper-ios.sh` — whisper.cpp arm64 for iOS
-- `scripts/build-dmg.sh` — full macOS DMG build pipeline (includes bundled small model)
+- `scripts/build-dmg.sh` — full macOS DMG build pipeline (includes bundled small model and the
+  `corvin-diarize` helper in `Contents/Helpers`)
+- `scripts/publish-models-manifest.sh` — regenerate and publish `models.json` (whisper models plus
+  the `diarization` section, pinned to `DIARIZATION_REVISION` in `generate-models-manifest.py`)
 
 ## Architecture
 
@@ -61,6 +64,33 @@ AudioCaptureService.onSamples ─► SpeechRecognizer ─► TranscriptEvent ─
   realtime insertion — typed text cannot be taken back.
 - Setting: `DictationSettings.realtimeKey` (`realtimeDictation`), toggle in General settings.
 
+### File transcription (macOS)
+
+```
+FileTranscriptionQueue ─► AudioFileDecoder ─► [roles] DiarizationClient ─► corvin-diarize (process)
+                                           └─► TranscriptionEngine.transcribeTimed (prompt, word timestamps)
+                        ─► SpeakerTranscriptBuilder + RolesFormatter ─► TranscriptSaver ─► TranscriptRegistry
+```
+
+- Transcription settings pane: plain jobs write `<name>.txt`; "Dialog recognition" (macOS 14+)
+  writes `<name>_roles.txt` as `[HH:MM:SS] Speaker N:` paragraphs. Mode and dictionary are fixed per
+  job when queued; `stopAndRestart` cancels one job and re-queues it with current settings.
+- Diarization is FluidAudio (CoreML) in `Helpers/Diarizer`, a separate macOS 14 package run as a
+  process: Corvin targets 11 and cannot import it, and FluidAudio's macOS 14 BNNS crash stays in the
+  helper. It loads models only from disk (`ModelHub.offlineMode`, no download path).
+  Dev runs without a bundle: `CORVIN_DIARIZE_PATH=Helpers/Diarizer/.build/release/corvin-diarize`.
+- `DiarizationModelStore` installs the 21-file model set (sha256 each, atomic swap, fingerprint for
+  updates) from the manifest's `diarization` section, falling back to a compiled-in entry.
+  `DiarizationClient.helperAPI` must match the entry's `helperAPI`.
+- `SpeakerTranscriptBuilder` (pure, tuned on real meetings): max-overlap attribution, turn
+  boundaries snapped to sentence ends (±1 s), short runs absorbed, runs split at whisper's
+  leading-dash turn markers. Token timestamps are enough; DTW gave nothing and needs flash
+  attention off.
+- `TranscriptRegistry` (`transcripts.json`) lists transcribed files; a source whose size or mtime
+  differs from transcription time is flagged. `VocabularyStore` (`vocabularies.json`) holds named
+  term lists; `TranscriptionEngine.fitPrompt` keeps the leading terms that fit 200 tokens, passed
+  as `initial_prompt` with `carry_initial_prompt` (chunks are decoded independently).
+
 ### Directory Structure
 
 ```
@@ -76,6 +106,7 @@ iOS/Services/        — IPCServer (NWListener), TranscriptionService, AudioCapt
 iOS/UI/              — MainView, Settings, History, Onboarding, ModelManager views
 iOS/Intents/         — StartRecordingIntent (App Intents for Shortcuts/Siri)
 CorvinKeyboard/     — KeyboardViewController (KeyboardKit), PTTController, AudioRecorder, IPCClient, CustomActionHandler
+Helpers/Diarizer/    — corvin-diarize: FluidAudio speaker diarization helper (separate package, macOS 14)
 Sources/CWhisper/    — C bridge to whisper.cpp
 vendor/whisper.cpp/  — Vendored whisper.cpp
 ```
@@ -90,6 +121,8 @@ vendor/whisper.cpp/  — Vendored whisper.cpp
 
 - macOS models: `~/Library/Application Support/Corvin/Models/` (bundled models auto-copied from app Resources on first launch)
 - iOS models: App Group shared container (`group.com.corvin.shared`)
+- macOS diarization models: `~/Library/Application Support/Corvin/Models/diarization/` (`installed.json` marker)
+- macOS file transcription: `Corvin/transcripts.json` (transcribed files), `Corvin/vocabularies.json` (term dictionaries)
 - History: Core Data SQLite (programmatic model)
 - Settings: UserDefaults (iOS uses App Group suite)
 
@@ -156,3 +189,5 @@ git push origin main
 - iOS keyboard extension requires Full Access for microphone and network
 - External dependency: KeyboardKit (iOS keyboard extension only)
 - No test suite currently exists
+- Local only: recognition, diarization, dictionaries and transcripts never leave the device; the
+  network is used only to download model files

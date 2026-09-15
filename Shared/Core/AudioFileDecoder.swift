@@ -1,4 +1,5 @@
 import Foundation
+import Accelerate
 import AVFoundation
 import COpus
 
@@ -189,19 +190,48 @@ enum AudioFileDecoder {
         return pcmData
     }
 
-    /// 48kHz mono float → 16kHz mono Int16 (decimate by 3).
+    /// 48kHz mono float → 16kHz mono Int16.
+    ///
+    /// Low-pass before decimating: keeping every third sample on its own folds
+    /// everything between 8 and 24 kHz back into the speech band. Whisper
+    /// mostly shrugs that off; the speaker embeddings diarization compares
+    /// voices with do not.
     private static func downsample48kToPCM16k(_ samples: [Float]) -> Data {
-        let step = 3
-        var pcmData = Data()
-        pcmData.reserveCapacity(samples.count / step * MemoryLayout<Int16>.size)
+        let factor = 3
+        let taps = lowPassTaps
+        let half = taps.count / 2
 
-        for i in stride(from: 0, to: samples.count, by: step) {
-            let clamped = max(-1.0, min(1.0, samples[i]))
-            var sample = Int16(clamped * 32767.0)
-            withUnsafeBytes(of: &sample) { pcmData.append(contentsOf: $0) }
-        }
-        return pcmData
+        // Zero-pad by half the filter on both sides so it is centred on every
+        // output sample: timing and length match the old plain decimation.
+        var padded = [Float](repeating: 0, count: half)
+        padded.reserveCapacity(samples.count + 2 * half)
+        padded += samples
+        padded += [Float](repeating: 0, count: half)
+
+        let outCount = (samples.count + factor - 1) / factor
+        var filtered = [Float](repeating: 0, count: outCount)
+        vDSP_desamp(padded, vDSP_Stride(factor), taps, &filtered,
+                    vDSP_Length(outCount), vDSP_Length(taps.count))
+
+        let pcm = filtered.map { Int16(max(-1.0, min(1.0, $0)) * 32767.0) }
+        return pcm.withUnsafeBufferPointer { Data(buffer: $0) }
     }
+
+    /// Windowed-sinc low-pass for 48 kHz input: cutoff 7.2 kHz, just under the
+    /// 8 kHz Nyquist of the 16 kHz output. Blackman window, unity gain at DC.
+    private static let lowPassTaps: [Float] = {
+        let count = 97
+        let cutoff = 7200.0 / 48000.0
+        let mid = Double(count - 1) / 2
+        let taps = (0..<count).map { n -> Double in
+            let x = Double(n) - mid
+            let sinc = x == 0 ? 2 * cutoff : sin(2 * .pi * cutoff * x) / (.pi * x)
+            let phase = 2 * .pi * Double(n) / Double(count - 1)
+            return sinc * (0.42 - 0.5 * cos(phase) + 0.08 * cos(2 * phase))
+        }
+        let sum = taps.reduce(0, +)
+        return taps.map { Float($0 / sum) }
+    }()
 
     /// Decode any supported audio format to 16kHz Int16 mono PCM Data.
     static func decode(url: URL) throws -> Data {

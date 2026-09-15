@@ -400,3 +400,6 @@
 /* Realtime dictation */
 "settings.general.realtime" = "Type text while speaking";
 "settings.general.realtime.hint" = "Text appears in the active field about 1–2 seconds behind your speech, without waiting for the key to be released. Requires auto-insert.";
+
+/* Dialog (speaker roles) transcripts */
+"roles.speaker" = "Speaker %d";

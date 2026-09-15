@@ -400,3 +400,6 @@
 /* Realtime dictation */
 "settings.general.realtime" = "Печатать текст по ходу речи";
 "settings.general.realtime.hint" = "Текст появляется в активном поле с отставанием ~1–2 с, не дожидаясь отпускания клавиши. Работает при включённой автовставке.";
+
+/* Dialog (speaker roles) transcripts */
+"roles.speaker" = "Спикер %d";

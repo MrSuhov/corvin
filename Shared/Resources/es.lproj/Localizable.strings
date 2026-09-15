@@ -400,3 +400,6 @@
 /* Realtime dictation */
 "settings.general.realtime" = "Escribir el texto mientras hablas";
 "settings.general.realtime.hint" = "El texto aparece en el campo activo con 1–2 segundos de retraso, sin esperar a que sueltes la tecla. Requiere la inserción automática.";
+
+/* Dialog (speaker roles) transcripts */
+"roles.speaker" = "Hablante %d";

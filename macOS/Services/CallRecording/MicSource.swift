@@ -40,6 +40,13 @@ final class MicSource: CallAudioSource {
 
         let input = engine.inputNode
         if voiceProcessing {
+            // The graph has to be up *before* voice processing is switched on.
+            // Voice processing runs through the output unit, and asking for it
+            // first leaves that unit unable to initialize (-10875 at
+            // kAUInitialize) — which then poisons the whole process: every
+            // later engine in it fails to open the output device at all. That
+            // is why the fallback below touches nothing but the input node.
+            _ = engine.mainMixerNode
             try input.setVoiceProcessingEnabled(true)
             if #available(macOS 14.0, *) {
                 // Voice processing ducks other apps by default — here that would
@@ -48,16 +55,19 @@ final class MicSource: CallAudioSource {
                     AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
             }
         }
-        // Voice processing runs through the output unit too; it needs the graph.
-        _ = engine.mainMixerNode
 
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             throw CallRecordingError.captureFailed("no input device")
         }
         let resampler = self.resampler
+        // Voice processing hands out several discrete channels carrying the
+        // same processed signal; averaging them would be a gamble on that
+        // staying true, and the first channel is the processed microphone by
+        // definition. A plain microphone is mono anyway.
+        let mixdown: MonoResampler.Mixdown = voiceProcessing ? .firstChannel : .average
         input.installTap(onBus: 0, bufferSize: 1600, format: format) { [weak self] buffer, when in
-            let samples = resampler.convert(buffer)
+            let samples = resampler.convert(buffer, mixdown: mixdown)
             guard !samples.isEmpty else { return }
             self?.onChunk?(samples, when.isHostTimeValid ? when.hostTime : mach_absolute_time())
         }

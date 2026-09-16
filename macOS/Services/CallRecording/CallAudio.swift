@@ -50,30 +50,41 @@ enum CallRecordingError: LocalizedError {
 /// channel counts (see `AudioCaptureService`). One instance per stream; not
 /// thread-safe.
 final class MonoResampler {
+    /// How several channels become one.
+    enum Mixdown {
+        /// Every channel contributes: a stereo mixdown of an app's audio.
+        case average
+        /// Only channel 0: voice processing repeats its processed signal across
+        /// discrete channels, and mixing them in would be a guess about the
+        /// rest.
+        case firstChannel
+    }
+
     private let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
     private var sourceFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
 
-    func convert(_ buffer: AVAudioPCMBuffer) -> [Float] {
+    func convert(_ buffer: AVAudioPCMBuffer, mixdown: Mixdown = .average) -> [Float] {
         let frames = Int(buffer.frameLength)
         let channels = Int(buffer.format.channelCount)
         guard frames > 0, channels > 0, let data = buffer.floatChannelData else { return [] }
 
+        let used = mixdown == .firstChannel ? 1 : channels
         var mono = [Float](repeating: 0, count: frames)
         if buffer.format.isInterleaved {
             let samples = data[0]
             for i in 0..<frames {
                 var sum: Float = 0
-                for c in 0..<channels { sum += samples[i * channels + c] }
-                mono[i] = sum / Float(channels)
+                for c in 0..<used { sum += samples[i * channels + c] }
+                mono[i] = sum / Float(used)
             }
         } else {
-            for c in 0..<channels {
+            for c in 0..<used {
                 let samples = data[c]
                 for i in 0..<frames { mono[i] += samples[i] }
             }
-            if channels > 1 {
-                for i in 0..<frames { mono[i] /= Float(channels) }
+            if used > 1 {
+                for i in 0..<frames { mono[i] /= Float(used) }
             }
         }
 

@@ -106,6 +106,28 @@ final class CallRecordingFileTests: XCTestCase {
         XCTAssertTrue(AudioFileDecoder.isAudible(right))
     }
 
+    /// Voice processing hands out several discrete channels; taking the first
+    /// one must not become an average of whatever else is in there.
+    func testMixdownPicksTheFirstChannelOrAveragesThem() throws {
+        // Four discrete channels: the standard initializer stops at two.
+        let layout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 4)!
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000,
+                                   interleaved: false, channelLayout: layout)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1600)!
+        buffer.frameLength = 1600
+        let data = buffer.floatChannelData!
+        for frame in 0..<1600 {
+            data[0][frame] = 0.4
+            for channel in 1..<4 { data[channel][frame] = -0.4 }
+        }
+
+        let first = MonoResampler().convert(buffer, mixdown: .firstChannel)
+        let averaged = MonoResampler().convert(buffer, mixdown: .average)
+
+        XCTAssertEqual(first.dropFirst(200).first ?? 0, 0.4, accuracy: 0.02)
+        XCTAssertEqual(averaged.dropFirst(200).first ?? 0, -0.2, accuracy: 0.02)
+    }
+
     func testMonoFileIsRejectedForCallMode() throws {
         let url = directory.appendingPathComponent("mono.caf")
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!

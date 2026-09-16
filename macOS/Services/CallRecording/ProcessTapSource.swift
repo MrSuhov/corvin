@@ -62,7 +62,15 @@ final class ProcessTapSource: CallAudioSource {
     /// changes must not interleave with `stop()` on another thread.
     private func open() throws {
         let processes = CoreAudioProcesses.processes(of: app)
-        guard !processes.isEmpty else { throw CallRecordingError.appNotFound(app.name) }
+        // An app that has not played a sound since it launched owns no Core
+        // Audio process object yet, and recording is started before the call
+        // is, not after: wait for the object rather than refusing. The tap is
+        // opened by `processesChanged` as soon as one appears, and the other
+        // channel is silence until then.
+        guard !processes.isEmpty else {
+            flog("ProcessTapSource: \(app.bundleID) has no audio process yet, waiting for one")
+            return
+        }
 
         let description = CATapDescription(stereoMixdownOfProcesses: processes.map(\.id))
         description.uuid = UUID()
@@ -143,9 +151,22 @@ final class ProcessTapSource: CallAudioSource {
     }
 
     private func processesChanged() {
-        guard !stopped, let tapDescription else { return }
+        guard !stopped else { return }
         let current = Set(CoreAudioProcesses.processes(of: app).map(\.id))
         guard !current.isEmpty, current != tapped else { return }
+
+        guard let tapDescription else {
+            // The app was silent when recording started, so there was nothing
+            // to tap yet. This is that moment.
+            do {
+                try open()
+            } catch {
+                flog("ProcessTapSource: opening the tap once \(app.bundleID) had audio failed: \(error)")
+                onEnded?((error as? CallRecordingError)?.message
+                         ?? LocalizedMessage("call.error.captureFailed", error.localizedDescription))
+            }
+            return
+        }
 
         tapDescription.processes = Array(current)
         var address = CoreAudioProperty.address(kAudioTapPropertyDescription)

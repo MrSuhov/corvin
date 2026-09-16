@@ -23,6 +23,12 @@ final class StatusBarController: NSObject {
     private var updateProgress: UpdaterService.Progress?
     private var lastState: SessionState = .idle
     private var cancellables = Set<AnyCancellable>()
+    /// The update badge, green. A view over the button rather than part of the
+    /// icon: the icon is a template image the system paints in one colour, and
+    /// making it a coloured image instead would lose both light/dark adaptation
+    /// and the state tints, which only apply to templates. The icon keeps a
+    /// transparent ring punched where the dot sits.
+    private let badge = NSView()
 
     init(sessionManager: SessionManager, modelManager: ModelManager, historyStore: HistoryStore,
          callRecorder: CallRecorder, appDelegate: AppDelegate) {
@@ -37,7 +43,11 @@ final class StatusBarController: NSObject {
         super.init()
 
         if let button = statusItem.button {
-            button.image = Self.statusBarIcon(badged: false)
+            button.image = Self.statusBarIcon(open: false, badged: false)
+            badge.wantsLayer = true
+            badge.isHidden = true
+            badge.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
+            button.addSubview(badge)
         }
 
         UpdaterService.shared.$pendingUpdateVersion
@@ -90,31 +100,28 @@ final class StatusBarController: NSObject {
         buildMenu()
     }
 
-    private static func loadStatusBarIcon() -> NSImage? {
-        // Try loading from bundle resources (SPM)
-        if let url = Bundle.main.url(forResource: "StatusBarIcon", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
+    /// The raven, beak closed or open — see `scripts/generate-status-bar-icons.swift`.
+    private static func loadStatusBarIcon(open: Bool) -> NSImage? {
+        let name = open ? "StatusBarIconOpen" : "StatusBarIcon"
+        // `image(forResource:)` picks up the @2x file too; loading the .png by
+        // URL would give one blurry representation on a Retina screen.
+        if let image = Bundle.main.image(forResource: name) ?? NSImage(named: name) {
             image.isTemplate = true
             return image
         }
-        // Fallback to named image (Xcode)
-        if let image = NSImage(named: "StatusBarIcon") {
-            image.isTemplate = true
-            return image
-        }
-        // Final fallback to SF Symbol
         return NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Corvin")
     }
 
-    /// The status bar icon, optionally carrying an update badge in its top-right
-    /// corner.
-    ///
-    /// The badge is baked into the same template image as the glyph, so it takes
-    /// the menubar's foreground colour — white on a dark menubar, black on a
-    /// light one. A transparent ring is punched around it first so it stays
-    /// legible where it overlaps the glyph.
-    private static func statusBarIcon(badged: Bool) -> NSImage? {
-        guard let base = loadStatusBarIcon() else { return nil }
+    /// The badge's diameter for an icon of this size.
+    private static func badgeDiameter(for size: NSSize) -> CGFloat {
+        max(4, size.height * 0.34)
+    }
+
+    /// The status bar icon, with room made for the update badge in its top-right
+    /// corner: a transparent ring punched where the green dot (`badge`) goes, so
+    /// the dot stays legible wherever it overlaps the glyph.
+    private static func statusBarIcon(open: Bool, badged: Bool) -> NSImage? {
+        guard let base = loadStatusBarIcon(open: open) else { return nil }
         guard badged else { return base }
 
         let size = base.size
@@ -125,7 +132,7 @@ final class StatusBarController: NSObject {
         let badgedIcon = NSImage(size: size, flipped: false) { rect in
             base.draw(in: rect)
 
-            let diameter = max(4, rect.width * 0.34)
+            let diameter = badgeDiameter(for: rect.size)
             let dot = NSRect(
                 x: rect.maxX - diameter,
                 y: rect.maxY - diameter,
@@ -135,16 +142,27 @@ final class StatusBarController: NSObject {
 
             NSGraphicsContext.current?.compositingOperation = .destinationOut
             NSBezierPath(ovalIn: dot.insetBy(dx: -1.5, dy: -1.5)).fill()
-
-            NSGraphicsContext.current?.compositingOperation = .sourceOver
-            // Colour is irrelevant in a template image — only alpha survives.
-            NSColor.black.setFill()
-            NSBezierPath(ovalIn: dot).fill()
-
             return true
         }
         badgedIcon.isTemplate = true
         return badgedIcon
+    }
+
+    /// Over the ring punched into the icon: its top-right corner, the image being
+    /// centred in the button.
+    private func placeBadge(in button: NSStatusBarButton, visible: Bool) {
+        badge.isHidden = !visible
+        guard visible, let size = button.image?.size else { return }
+        let diameter = Self.badgeDiameter(for: size)
+        let image = NSRect(x: (button.bounds.width - size.width) / 2,
+                           y: (button.bounds.height - size.height) / 2,
+                           width: size.width, height: size.height)
+        badge.frame = NSRect(x: image.maxX - diameter,
+                             y: button.isFlipped ? image.minY : image.maxY - diameter,
+                             width: diameter, height: diameter)
+        badge.layer?.cornerRadius = diameter / 2
+        // Resolved each time: systemGreen differs between light and dark.
+        badge.layer?.backgroundColor = NSColor.systemGreen.cgColor
     }
 
     func updateState(_ state: SessionState) {
@@ -152,13 +170,16 @@ final class StatusBarController: NSObject {
 
         guard let button = statusItem.button else { return }
 
-        button.image = Self.statusBarIcon(badged: pendingUpdateVersion != nil)
+        let badged = pendingUpdateVersion != nil
+        // The raven opens its beak while it listens; that replaces the red tint.
+        button.image = Self.statusBarIcon(open: state == .recording, badged: badged)
+        placeBadge(in: button, visible: badged)
 
         switch state {
         case .idle:
             button.contentTintColor = callRecorder.isRecording ? .systemRed : nil
         case .recording:
-            button.contentTintColor = .systemRed
+            button.contentTintColor = nil
         case .transcribing:
             button.contentTintColor = .systemOrange
         case .inserting, .done:

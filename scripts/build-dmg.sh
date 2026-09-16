@@ -81,6 +81,8 @@ echo "  Version: $MARKETING_VERSION (build $BUILD_VERSION)"
 cp "$PROJECT_DIR/macOS/Resources/AppIcon.icns" "$APP_DIR/Resources/" 2>/dev/null || true
 cp "$PROJECT_DIR/macOS/Resources/StatusBarIcon.png" "$APP_DIR/Resources/" 2>/dev/null || true
 cp "$PROJECT_DIR/macOS/Resources/StatusBarIcon@2x.png" "$APP_DIR/Resources/" 2>/dev/null || true
+cp "$PROJECT_DIR/macOS/Resources/StatusBarIconOpen.png" "$APP_DIR/Resources/"
+cp "$PROJECT_DIR/macOS/Resources/StatusBarIconOpen@2x.png" "$APP_DIR/Resources/"
 
 # Copy localization resources
 for lproj in "$PROJECT_DIR/Shared/Resources/"*.lproj; do

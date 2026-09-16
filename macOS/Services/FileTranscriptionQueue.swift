@@ -636,8 +636,8 @@ final class FileTranscriptionQueue: ObservableObject {
             for (index, side) in sides.enumerated() where heard[index] {
                 let spoken = try await engine.transcribeTimed(
                     audioData: side.pcm,
-                    options: TranscriptionOptions(prompt: prompt, wordTimestamps: true,
-                                                  modelID: modelID, suppressNonSpeech: true),
+                    options: TranscriptionOptions(prompt: prompt, wordTimestamps: true, modelID: modelID,
+                                                  suppressNonSpeech: true, beamSearch: true),
                     onProgress: progressHandler(for: jobID, part: part, of: parts),
                     shouldYield: { busy.value },
                     shouldCancel: { cancel.value }

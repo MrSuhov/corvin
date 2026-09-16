@@ -321,8 +321,12 @@ final class CallRecorder: ObservableObject {
             let target = uniqueURL(in: directory, base: base, pathExtension: "m4a")
             // Merged under a temporary name and renamed: quitting midway would
             // otherwise leave an unreadable .m4a in the calls folder, with no
-            // index and nothing to say it is broken.
-            let partial = directory.appendingPathComponent(".\(target.lastPathComponent).partial")
+            // index and nothing to say it is broken. The temporary name still
+            // ends in .m4a: `AVAudioFile` picks the container from the
+            // extension, and for one it does not know it quietly writes CAF —
+            // which QuickTime then refuses to open under the final name.
+            let partial = directory.appendingPathComponent(
+                ".\(target.deletingPathExtension().lastPathComponent).partial.m4a")
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 try? FileManager.default.removeItem(at: partial)

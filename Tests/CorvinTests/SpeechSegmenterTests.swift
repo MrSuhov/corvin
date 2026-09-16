@@ -213,9 +213,14 @@ final class SpeechSegmenterFieldCheck: XCTestCase {
         let channels = try AudioFileDecoder.decodeChannels(url: URL(fileURLWithPath: path))
         print("field check: \(path)")
 
+        let dump = ProcessInfo.processInfo.environment["CORVIN_DUMP_DIR"]
         for (name, pcm) in [("me", channels.left), ("other", channels.right)] {
             let spans = SpeechSegmenter.spans(pcm)
             let compacted = CompactedAudio.make(pcm, spans: spans)
+            // What whisper is actually handed, for running it outside the app.
+            if let dump {
+                try compacted.pcm.write(to: URL(fileURLWithPath: dump).appendingPathComponent("compacted-\(name).raw"))
+            }
             let total = Double(pcm.count / 2) / SpeechSegmenter.sampleRate
             print(String(format: "field check %@: %.1fs → %.1fs of speech in %d span(s)",
                          name, total, compacted.duration, spans.count))

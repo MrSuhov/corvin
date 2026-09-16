@@ -132,8 +132,15 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
   separators also fix where `splitAtSilence` cuts its 25 s chunks — always in a separator, so no word
   is split and drift cannot accumulate past one chunk.
 - `TranscriptionOptions.suppressNonSpeech` (calls only) turns on `suppress_nst`, drops segments whose
-  `no_speech_prob` is over 0.6 and those that merely describe a sound ("[Аплодисменты]", a ring tone
-  as "ДИНАМИЧНАЯ МУЗЫКА") — each would otherwise become a turn with a timestamp.
+  `no_speech_prob` is over 0.9 and those that merely describe a sound ("[Аплодисменты]", a ring tone
+  as "ДИНАМИЧНАЯ МУЗЫКА") — each would otherwise become a turn with a timestamp. Without
+  `suppress_nst` whisper files a poor far end away as "*звонок*" and the speech in it is lost.
+- `TranscriptionOptions.beamSearch` (calls only): beam 5 instead of greedy. On a poor far end greedy
+  decoding locked onto one invented sentence and repeated it for a whole chunk; beam search on the
+  same audio recovered the words, for 20–50% more time. Dictation stays greedy.
+- The merge is written under `.<name>.partial.m4a` and renamed: `AVAudioFile` picks the container by
+  extension and silently writes CAF for one it does not know, which QuickTime refuses as `.m4a` —
+  reading it back sniffs content and succeeds, so only a container check catches it.
 - Diarization runs on the **original** right channel, not the compacted one: mapping segments back
   would stretch one across the real silence, and the diarizer's 10 s window holds three voices at
   most, which compaction would overfill exactly in a group call.

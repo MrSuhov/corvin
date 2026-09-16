@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 import XCTest
 @testable import Corvin
@@ -85,6 +86,40 @@ final class CallRecordingFileTests: XCTestCase {
         for part in parts {
             XCTAssertFalse(FileManager.default.fileExists(atPath: part.path))
         }
+    }
+
+    /// The merged file has to *be* an MPEG-4 file, not just be named like one.
+    /// QuickTime and Finder go by the name and refuse anything else; reading it
+    /// back with `AVAudioFile` sniffs the content and succeeds either way, which
+    /// is how a CAF named .m4a got past every other test.
+    func testMergedRecordingIsARealMPEG4File() throws {
+        let writer = try record(1, base: "Call Telegram 2026-09-16 10-00", chunkDuration: 0.5)
+        _ = writer.finish()
+
+        let outputs = CallRecorder.finalize(writer.parts,
+                                            preferredDirectory: directory.appendingPathComponent("Calls"))
+
+        XCTAssertEqual(outputs.count, 1)
+        let type = try containerType(outputs[0])
+        XCTAssertTrue(type == kAudioFileM4AType || type == kAudioFileMPEG4Type,
+                      "container is '\(fourCC(type))', not MPEG-4")
+    }
+
+    /// What the file's content says it is, whatever its name says.
+    private func containerType(_ url: URL) throws -> AudioFileTypeID {
+        var file: AudioFileID?
+        guard AudioFileOpenURL(url as CFURL, .readPermission, 0, &file) == noErr, let file else {
+            throw CallRecordingError.captureFailed("cannot open \(url.lastPathComponent)")
+        }
+        defer { AudioFileClose(file) }
+        var type: AudioFileTypeID = 0
+        var size = UInt32(MemoryLayout<AudioFileTypeID>.size)
+        _ = AudioFileGetProperty(file, kAudioFilePropertyFileFormat, &size, &type)
+        return type
+    }
+
+    private func fourCC(_ code: UInt32) -> String {
+        String([24, 16, 8, 0].map { Character(UnicodeScalar(UInt8((code >> $0) & 0xFF))) })
     }
 
     func testLateChannelStartsWithSilence() throws {

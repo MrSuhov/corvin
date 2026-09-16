@@ -48,6 +48,13 @@ struct TranscriptionOptions {
     /// timestamp. Off for dictation, where the audio is a person talking into a
     /// microphone on purpose.
     var suppressNonSpeech = false
+    /// Beam search (5 beams, 5 candidates on fallback) instead of greedy
+    /// decoding. On poor audio — a far end held away from the mouth, a line
+    /// breaking up — greedy decoding locks onto one invented sentence and
+    /// repeats it to the end of the chunk; on the same audio beam search
+    /// recovers what was said, for 20–50% more time. Worth it for a recording
+    /// transcribed in the background, not for dictation someone is waiting on.
+    var beamSearch = false
 
     static let plain = TranscriptionOptions()
 }
@@ -390,7 +397,12 @@ class TranscriptionEngine: ObservableObject {
                     onProgress?(idx + 1, chunks.count)
                     flog("chunk \(idx+1)/\(chunks.count): \(chunk.count) samples (\(String(format: "%.1f", Float(chunk.count) / 16000.0))s)")
 
-                    var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
+                    var params = whisper_full_default_params(
+                        options.beamSearch ? WHISPER_SAMPLING_BEAM_SEARCH : WHISPER_SAMPLING_GREEDY)
+                    if options.beamSearch {
+                        params.beam_search.beam_size = 5
+                        params.greedy.best_of = 5
+                    }
                     params.language = nil
                     params.translate = false
                     params.n_threads = Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 2))

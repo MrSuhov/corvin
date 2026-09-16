@@ -56,7 +56,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "layoutSwitchEnabled": true,
             "layoutSwitchChangesInputSource": true,
             "layoutSwitchKeyCode": ModifierKey.option.canonicalKeyCode,
-        ].merging(DictationSettings.defaults) { current, _ in current })
+        ].merging(DictationSettings.defaults) { current, _ in current }
+            .merging(CallSettings.defaults) { current, _ in current })
 
         accessibilityService = AccessibilityService()
         layoutSwitchService = LayoutSwitchService(accessibility: accessibilityService)

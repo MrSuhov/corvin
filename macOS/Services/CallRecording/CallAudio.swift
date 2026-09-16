@@ -146,12 +146,56 @@ struct TimelineCursor {
     }
 }
 
-/// Writes a call as one 16 kHz file: left channel the microphone, right the app.
+/// Names of one recording's parts: `<base>.part1.caf`, `<base>.part2.caf`, …
+///
+/// Parts are what make a long call safe: each finished one is a closed file, so
+/// an interruption costs at most the part in flight. `CallRecorder` merges them
+/// into a single file when the call ends.
+enum CallRecordingParts {
+    static let pathExtension = "caf"
+    private static let marker = ".part"
+
+    static func url(in directory: URL, base: String, index: Int) -> URL {
+        directory.appendingPathComponent("\(base)\(marker)\(index).\(pathExtension)")
+    }
+
+    /// The recording a part belongs to — or the whole name, for a file that is
+    /// not a part (a recording written before parts existed).
+    static func base(of url: URL) -> String {
+        let name = url.deletingPathExtension().lastPathComponent
+        guard let range = name.range(of: marker, options: .backwards),
+              Int(name[range.upperBound...]) != nil
+        else { return name }
+        return String(name[..<range.lowerBound])
+    }
+
+    static func index(of url: URL) -> Int {
+        let name = url.deletingPathExtension().lastPathComponent
+        guard let range = name.range(of: marker, options: .backwards),
+              let index = Int(name[range.upperBound...])
+        else { return 0 }
+        return index
+    }
+
+    /// A directory listing as recordings, each with its parts in order.
+    static func group(_ urls: [URL]) -> [(base: String, parts: [URL])] {
+        var grouped: [String: [URL]] = [:]
+        for url in urls where url.pathExtension == pathExtension {
+            grouped[base(of: url), default: []].append(url)
+        }
+        return grouped
+            .map { (base: $0.key, parts: $0.value.sorted { index(of: $0) < index(of: $1) }) }
+            .sorted { $0.base < $1.base }
+    }
+}
+
+/// Writes a call as 16 kHz two-channel parts: left channel the microphone,
+/// right the app.
 ///
 /// 16-bit PCM in CAF rather than AAC. Core Audio leaves a CAF data chunk
-/// open-ended while writing, so a PCM recording stays readable if Corvin dies
-/// mid-call; compressed audio needs a packet table that is written only on
-/// close. `CallRecorder` converts to AAC once the call ends.
+/// open-ended while writing, so even the part in flight stays readable if
+/// Corvin dies mid-call; compressed audio needs a packet table that is written
+/// only on close. `CallRecorder` merges the parts into AAC once the call ends.
 final class CallTimelineWriter: @unchecked Sendable {
     enum Channel: Int {
         case me = 0
@@ -166,26 +210,38 @@ final class CallTimelineWriter: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "com.corvin.call.writer", qos: .userInitiated)
     private let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 2, interleaved: false)!
+    private let directory: URL
+    private let base: String
+    private let chunkFrames: Int
     // Confined to `queue`.
     private var file: AVAudioFile?
     private var origin: UInt64?
     private var cursors = [TimelineCursor(), TimelineCursor()]
     private var pending: [[Float]] = [[], []]
     private var framesWritten = 0
+    private var framesInPart = 0
+    private var partIndex = 0
     private let failed = AtomicFlag()
 
+    private let partsLock = NSLock()
+    private var partURLs: [URL] = []
     private let levelLock = NSLock()
     private var levelValues: [Float] = [0, 0]
 
-    init(url: URL) throws {
-        file = try AVAudioFile(forWriting: url,
-                               settings: [AVFormatIDKey: kAudioFormatLinearPCM,
-                                          AVSampleRateKey: Self.sampleRate,
-                                          AVNumberOfChannelsKey: 2,
-                                          AVLinearPCMBitDepthKey: 16,
-                                          AVLinearPCMIsFloatKey: false],
-                               commonFormat: .pcmFormatFloat32,
-                               interleaved: false)
+    /// - Parameter chunkDuration: how long one part is; see `CallSettings`.
+    init(directory: URL, base: String, chunkDuration: TimeInterval) throws {
+        self.directory = directory
+        self.base = base
+        chunkFrames = max(Int(chunkDuration * Self.sampleRate), Self.block)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try openNextPart()
+    }
+
+    /// Every part written so far, in order. All but the last are closed files.
+    var parts: [URL] {
+        partsLock.lock()
+        defer { partsLock.unlock() }
+        return partURLs
     }
 
     /// The file stopped taking writes — a full or disconnected disk. Whatever
@@ -210,8 +266,8 @@ final class CallTimelineWriter: @unchecked Sendable {
         queue.async { self.place(samples, hostTime: hostTime, channel: channel.rawValue) }
     }
 
-    /// Flush, pad the shorter channel and close the file. Returns its length in
-    /// seconds. Call once, after both sources have stopped.
+    /// Flush, pad the shorter channel and close the last part. Returns the
+    /// length in seconds. Call once, after both sources have stopped.
     func finish() -> TimeInterval {
         queue.sync {
             let longest = max(cursors[0].end, cursors[1].end)
@@ -219,6 +275,36 @@ final class CallTimelineWriter: @unchecked Sendable {
             write(frames: min(pending[0].count, pending[1].count))
             file = nil
             return Double(framesWritten) / Self.sampleRate
+        }
+    }
+
+    private func openNextPart() throws {
+        partIndex += 1
+        let url = CallRecordingParts.url(in: directory, base: base, index: partIndex)
+        file = try AVAudioFile(forWriting: url,
+                               settings: [AVFormatIDKey: kAudioFormatLinearPCM,
+                                          AVSampleRateKey: Self.sampleRate,
+                                          AVNumberOfChannelsKey: 2,
+                                          AVLinearPCMBitDepthKey: 16,
+                                          AVLinearPCMIsFloatKey: false],
+                               commonFormat: .pcmFormatFloat32,
+                               interleaved: false)
+        framesInPart = 0
+        partsLock.lock()
+        partURLs.append(url)
+        partsLock.unlock()
+    }
+
+    /// Closes the finished part and opens the next one. Setting `file` to nil is
+    /// what closes it — that is when Core Audio writes the header's sizes.
+    private func rotate() {
+        file = nil
+        do {
+            try openNextPart()
+            flog("CallTimelineWriter: part \(partIndex - 1) closed, writing part \(partIndex)")
+        } catch {
+            failed.value = true
+            flog("CallTimelineWriter: could not start part \(partIndex): \(error)")
         }
     }
 
@@ -235,10 +321,15 @@ final class CallTimelineWriter: @unchecked Sendable {
     }
 
     private func write(frames: Int) {
-        guard let file, frames > 0 else { return }
+        guard frames > 0 else { return }
         var offset = 0
-        while offset < frames {
-            let count = min(Self.block, frames - offset)
+        while offset < frames, let file {
+            let room = chunkFrames - framesInPart
+            if room <= 0 {
+                rotate()
+                continue
+            }
+            let count = min(min(Self.block, frames - offset), room)
             guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)) else { break }
             buffer.frameLength = AVAudioFrameCount(count)
             for c in 0..<2 {
@@ -256,6 +347,7 @@ final class CallTimelineWriter: @unchecked Sendable {
                 break
             }
             offset += count
+            framesInPart += count
         }
         for c in 0..<2 { pending[c].removeFirst(offset) }
         // Nothing is going to accept these samples; holding them would grow by

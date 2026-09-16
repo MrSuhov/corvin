@@ -470,3 +470,6 @@
 "roles.other" = "Other";
 "roles.otherNumbered" = "Other %d";
 "decoder.notTwoChannels" = "Expected a two-channel call recording.";
+"test.call.title" = "Call recording";
+"test.call.chunk.label" = "Record in parts of, min:";
+"test.call.chunk.hint" = "Each part is closed as it completes, so a crash costs at most the part in flight; the parts are merged into one file when the call ends.";

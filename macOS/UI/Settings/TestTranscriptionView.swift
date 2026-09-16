@@ -13,6 +13,7 @@ struct TestTranscriptionView: View {
     @EnvironmentObject var vocabularies: VocabularyStore
 
     @State private var isEditingVocabularies = false
+    @AppStorage(CallSettings.chunkMinutesKey) private var callChunkMinutes = 5
 
     @State private var resultText = ""
     @State private var isRecording = false
@@ -32,6 +33,10 @@ struct TestTranscriptionView: View {
                 Divider()
 
                 fileSection
+
+                Divider()
+
+                callSection
 
                 if !fileQueue.jobs.isEmpty {
                     Divider()
@@ -196,6 +201,30 @@ struct TestTranscriptionView: View {
             if !fileQueue.blockedDirectories.isEmpty {
                 blockedBanner
             }
+        }
+    }
+
+    // MARK: - Call recording
+
+    /// Recording itself starts from the menubar; the part length is the only
+    /// setting it has.
+    private var callSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("test.call.title".localized)
+                .font(.headline)
+
+            HStack(spacing: 8) {
+                Text("test.call.chunk.label".localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Stepper(value: $callChunkMinutes, in: CallSettings.chunkRange) {
+                    Text("\(callChunkMinutes)")
+                        .font(.system(.caption, design: .monospaced))
+                }
+                .frame(maxWidth: 90)
+            }
+
+            secondaryCaption("test.call.chunk.hint".localized)
         }
     }
 

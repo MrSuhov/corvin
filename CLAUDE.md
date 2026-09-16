@@ -95,8 +95,8 @@ FileTranscriptionQueue ─► AudioFileDecoder ─► [roles] DiarizationClient 
 
 ```
 MicSource (AVAudioEngine + voice processing) ─┐  16 kHz mono + host time
-ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter ─► PCM CAF (L = me, R = app)
-  or ScreenCaptureSource (13–14.1)            ─┘        Stop ─► AAC .m4a ─► FileTranscriptionQueue (.call)
+ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter ─► PCM CAF parts (L = me, R = app)
+  or ScreenCaptureSource (13–14.1)            ─┘        Stop ─► merge ─► AAC .m4a ─► FileTranscriptionQueue (.call)
 .call job: decodeChannels ─► transcribeTimed(L), transcribeTimed(R) ─► [diarize R] ─► EchoFilter ─► CallTranscriptBuilder
 ```
 
@@ -106,8 +106,11 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
 - Two independent streams aligned by host time (`TimelineCursor`, 20 ms tolerance, silence for gaps):
   voice processing cannot live inside an aggregate device with the tap, and ScreenCaptureKit is a
   separate stream anyway.
-- PCM CAF while recording because only it survives a crash; a `.caf` left in
-  `Application Support/Corvin/Recordings` at launch is finished and queued.
+- Recorded in parts (`<base>.partN.caf`, length from `CallSettings.chunkMinutes`, default 5): each
+  finished part is a closed file, so an interruption costs at most the part in flight. Stop merges
+  the parts into one AAC file (`CallRecorder.merge`); parts left in
+  `Application Support/Corvin/Recordings` at launch are grouped by name, merged and queued.
+  PCM rather than AAC while recording because only PCM CAF survives a crash.
 - Roles come from channels ("Me" / "Other"); diarization only splits the other side in group calls.
   `EchoFilter` drops mic phrases also heard on the app channel (speakers without headphones).
   Silent channels are not sent to whisper, which hallucinates on silence.

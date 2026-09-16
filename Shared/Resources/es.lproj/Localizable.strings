@@ -470,3 +470,6 @@
 "roles.other" = "Interlocutor";
 "roles.otherNumbered" = "Interlocutor %d";
 "decoder.notTwoChannels" = "Se esperaba una grabación de llamada de dos canales.";
+"test.call.title" = "Grabación de llamadas";
+"test.call.chunk.label" = "Grabar en partes de, min:";
+"test.call.chunk.hint" = "Cada parte se cierra al completarse, así que un fallo cuesta como máximo la parte en curso; al terminar la llamada las partes se unen en un archivo.";

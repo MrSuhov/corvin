@@ -54,7 +54,6 @@ final class CallRecorder: ObservableObject {
     private let fileQueue: FileTranscriptionQueue
     private var sources: [CallAudioSource] = []
     private var writer: CallTimelineWriter?
-    private var recordingURL: URL?
     private var levelTimer: Timer?
     private var terminationObserver: NSObjectProtocol?
     private var failureReset: DispatchWorkItem?
@@ -84,30 +83,31 @@ final class CallRecorder: ObservableObject {
 
     /// Stop and hand the recording to the transcription queue.
     func stop() {
-        guard case .recording(let app, _) = state, let writer, let url = recordingURL else { return }
+        guard case .recording(let app, _) = state, let writer else { return }
         state = .finishing(app)
         stopCapture()
         self.writer = nil
-        recordingURL = nil
 
         let preferred = fileQueue.outputDirectory ?? Self.defaultCallsDirectory
         Task {
             let duration = await Task.detached(priority: .userInitiated) { writer.finish() }.value
+            let parts = writer.parts
             guard duration >= Self.minimumDuration else {
                 flog("CallRecorder: \(duration)s is too short to keep")
-                try? FileManager.default.removeItem(at: url)
+                for part in parts { try? FileManager.default.removeItem(at: part) }
                 finishIdle()
                 return
             }
-            let output = await Task.detached(priority: .userInitiated) {
-                Self.finalize(url, preferredDirectory: preferred)
+            let outputs = await Task.detached(priority: .userInitiated) {
+                Self.finalize(parts, preferredDirectory: preferred)
             }.value
-            fileQueue.enqueueCall(output)
+            for output in outputs { fileQueue.enqueueCall(output) }
             finishIdle()
         }
     }
 
-    /// Quitting mid-call: close the file so the next launch can finish it.
+    /// Quitting mid-call: close the part in flight so the next launch can
+    /// merge and transcribe the call.
     func finishForTermination() {
         guard let writer else { return }
         stopCapture()
@@ -132,15 +132,13 @@ final class CallRecorder: ObservableObject {
     @available(macOS 13.0, *)
     private func begin(_ app: CallApp) async {
         // Unique, because names go down to the minute: a recording started
-        // right after a crash must not land on the leftover file that
-        // `recoverInterruptedRecordings` is still converting.
-        let url = Self.uniqueURL(in: Self.recordingsDirectory,
-                                 base: Self.baseName(for: app, at: Date()), pathExtension: "caf")
+        // right after a crash must not land on the parts that
+        // `recoverInterruptedRecordings` is still merging.
+        let base = Self.uniqueBase(in: Self.recordingsDirectory, base: Self.baseName(for: app, at: Date()))
         do {
-            try FileManager.default.createDirectory(at: Self.recordingsDirectory, withIntermediateDirectories: true)
-            let writer = try CallTimelineWriter(url: url)
+            let writer = try CallTimelineWriter(directory: Self.recordingsDirectory, base: base,
+                                                chunkDuration: CallSettings.chunkDuration)
             self.writer = writer
-            recordingURL = url
 
             let mic = MicSource()
             let remote: CallAudioSource
@@ -188,7 +186,7 @@ final class CallRecorder: ObservableObject {
 
         UserDefaults.standard.set(app.bundleID, forKey: Self.lastAppKey)
         state = .recording(app, since: Date())
-        flog("CallRecorder: recording \(app.bundleID) into \(url.lastPathComponent)")
+        flog("CallRecorder: recording \(app.bundleID) into \(base), parts of \(CallSettings.chunkDuration)s")
         observeTermination(of: app)
         levelTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshLevels() }
@@ -239,10 +237,10 @@ final class CallRecorder: ObservableObject {
 
     private func abandonRecording() {
         stopCapture()
+        let parts = writer?.parts ?? []
         _ = writer?.finish()
         writer = nil
-        if let recordingURL { try? FileManager.default.removeItem(at: recordingURL) }
-        recordingURL = nil
+        for part in parts { try? FileManager.default.removeItem(at: part) }
     }
 
     private func fail(_ message: LocalizedMessage) {
@@ -293,44 +291,58 @@ final class CallRecorder: ObservableObject {
         return name.components(separatedBy: CharacterSet(charactersIn: "/:")).joined(separator: "-")
     }
 
-    /// The recording as AAC `.m4a` in the calls folder, with the PCM original
-    /// removed. If no folder takes it, the CAF itself moves to Application
-    /// Support: out of `Recordings`, so a later launch does not recover it again.
-    nonisolated static func finalize(_ recording: URL, preferredDirectory: URL) -> URL {
-        let base = recording.deletingPathExtension().lastPathComponent
+    /// The recording's parts merged into one AAC `.m4a` in the calls folder,
+    /// with the PCM parts removed.
+    ///
+    /// Returns what to transcribe: one merged file, or — if no folder would
+    /// take the merge — the parts themselves, moved out of `Recordings` so a
+    /// later launch does not recover them again. Each of those is transcribed
+    /// on its own, which is worse than one script but loses nothing.
+    nonisolated static func finalize(_ parts: [URL], preferredDirectory: URL) -> [URL] {
+        guard let first = parts.first else { return [] }
+        let base = CallRecordingParts.base(of: first)
         for directory in [preferredDirectory, fallbackCallsDirectory] {
             let target = uniqueURL(in: directory, base: base, pathExtension: "m4a")
-            // Converted under a temporary name and renamed: quitting midway
-            // would otherwise leave an unreadable .m4a in the calls folder,
-            // with no index and nothing to say it is broken.
+            // Merged under a temporary name and renamed: quitting midway would
+            // otherwise leave an unreadable .m4a in the calls folder, with no
+            // index and nothing to say it is broken.
             let partial = directory.appendingPathComponent(".\(target.lastPathComponent).partial")
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 try? FileManager.default.removeItem(at: partial)
-                try convertToM4A(recording, to: partial)
+                try merge(parts, to: partial)
                 try FileManager.default.moveItem(at: partial, to: target)
-                try? FileManager.default.removeItem(at: recording)
-                flog("CallRecorder: saved \(target.path)")
-                return target
+                for part in parts { try? FileManager.default.removeItem(at: part) }
+                flog("CallRecorder: saved \(target.path) from \(parts.count) part(s)")
+                return [target]
             } catch {
                 flog("CallRecorder: could not save into \(directory.path): \(error)")
                 try? FileManager.default.removeItem(at: partial)
             }
         }
-        let target = uniqueURL(in: fallbackCallsDirectory, base: base, pathExtension: "caf")
-        do {
-            try FileManager.default.createDirectory(at: fallbackCallsDirectory, withIntermediateDirectories: true)
-            try FileManager.default.moveItem(at: recording, to: target)
-            return target
-        } catch {
-            flog("CallRecorder: could not move \(recording.lastPathComponent): \(error)")
-            return recording
+        return parts.map { part in
+            let target = uniqueURL(in: fallbackCallsDirectory,
+                                   base: part.deletingPathExtension().lastPathComponent,
+                                   pathExtension: CallRecordingParts.pathExtension)
+            do {
+                try FileManager.default.createDirectory(at: fallbackCallsDirectory, withIntermediateDirectories: true)
+                try FileManager.default.moveItem(at: part, to: target)
+                return target
+            } catch {
+                flog("CallRecorder: could not move \(part.lastPathComponent): \(error)")
+                return part
+            }
         }
     }
 
-    nonisolated static func convertToM4A(_ source: URL, to target: URL) throws {
-        let input = try AVAudioFile(forReading: source)
-        let format = input.processingFormat
+    /// The parts, in order, as one AAC file. Their format is the writer's, so
+    /// they concatenate sample for sample; a part that cannot be read is
+    /// skipped rather than losing the whole call.
+    nonisolated static func merge(_ sources: [URL], to target: URL) throws {
+        guard let first = sources.first else {
+            throw CallRecordingError.captureFailed("nothing to merge")
+        }
+        let format = try AVAudioFile(forReading: first).processingFormat
         var settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: format.sampleRate,
@@ -352,11 +364,37 @@ final class CallRecorder: ObservableObject {
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16000) else {
             throw CallRecordingError.captureFailed("cannot allocate a conversion buffer")
         }
-        while input.framePosition < input.length {
-            try input.read(into: buffer)
-            guard buffer.frameLength > 0 else { break }
-            try output.write(from: buffer)
+        var written: AVAudioFramePosition = 0
+        for source in sources {
+            guard let input = try? AVAudioFile(forReading: source),
+                  input.processingFormat.sampleRate == format.sampleRate,
+                  input.processingFormat.channelCount == format.channelCount
+            else {
+                flog("CallRecorder: skipping unreadable part \(source.lastPathComponent)")
+                continue
+            }
+            while input.framePosition < input.length {
+                try input.read(into: buffer)
+                guard buffer.frameLength > 0 else { break }
+                try output.write(from: buffer)
+                written += AVAudioFramePosition(buffer.frameLength)
+            }
         }
+        guard written > 0 else {
+            try? FileManager.default.removeItem(at: target)
+            throw CallRecordingError.captureFailed("every part was unreadable")
+        }
+    }
+
+    /// A base name whose first part file does not exist yet.
+    nonisolated static func uniqueBase(in directory: URL, base: String) -> String {
+        var candidate = base
+        var index = 1
+        while FileManager.default.fileExists(atPath: CallRecordingParts.url(in: directory, base: candidate, index: 1).path) {
+            candidate = "\(base)_\(index)"
+            index += 1
+        }
+        return candidate
     }
 
     nonisolated static func uniqueURL(in directory: URL, base: String, pathExtension: String) -> URL {
@@ -369,27 +407,32 @@ final class CallRecorder: ObservableObject {
         return candidate
     }
 
-    /// PCM CAF stays readable after a crash, so a call cut off mid-recording is
-    /// finished now and transcribed like any other.
+    /// PCM CAF stays readable after a crash, so a call cut off mid-recording
+    /// is merged now and transcribed like any other. Parts of one call are
+    /// grouped by name, so a crash costs only the seconds that never reached
+    /// the part in flight.
     private func recoverInterruptedRecordings() {
-        let leftovers = (try? FileManager.default.contentsOfDirectory(at: Self.recordingsDirectory,
-                                                                     includingPropertiesForKeys: nil))?
-            .filter { $0.pathExtension == "caf" } ?? []
-        guard !leftovers.isEmpty else { return }
+        let listing = (try? FileManager.default.contentsOfDirectory(at: Self.recordingsDirectory,
+                                                                    includingPropertiesForKeys: nil)) ?? []
+        let recordings = CallRecordingParts.group(listing)
+        guard !recordings.isEmpty else { return }
 
         let preferred = fileQueue.outputDirectory ?? Self.defaultCallsDirectory
         Task {
-            for url in leftovers {
-                let output = await Task.detached(priority: .utility) { () -> URL? in
-                    let frames = (try? AVAudioFile(forReading: url))?.length ?? 0
-                    guard Double(frames) >= CallTimelineWriter.sampleRate * Self.minimumDuration else {
-                        try? FileManager.default.removeItem(at: url)
-                        return nil
+            for recording in recordings {
+                let parts = recording.parts
+                let outputs = await Task.detached(priority: .utility) { () -> [URL] in
+                    let frames = parts.reduce(AVAudioFramePosition(0)) { total, part in
+                        total + ((try? AVAudioFile(forReading: part))?.length ?? 0)
                     }
-                    return Self.finalize(url, preferredDirectory: preferred)
+                    guard Double(frames) >= CallTimelineWriter.sampleRate * Self.minimumDuration else {
+                        for part in parts { try? FileManager.default.removeItem(at: part) }
+                        return []
+                    }
+                    return Self.finalize(parts, preferredDirectory: preferred)
                 }.value
-                flog("CallRecorder: recovered \(url.lastPathComponent) as \(output?.lastPathComponent ?? "nothing")")
-                if let output { fileQueue.enqueueCall(output) }
+                flog("CallRecorder: recovered \(recording.base) (\(parts.count) part(s)) as \(outputs.map(\.lastPathComponent))")
+                for output in outputs { fileQueue.enqueueCall(output) }
             }
         }
     }

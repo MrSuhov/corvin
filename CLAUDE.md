@@ -33,6 +33,24 @@ make project       # Generate Xcode project via XcodeGen
   raven profile. The update badge is a green view over the button, not part of the icon — a template
   image is one colour, and a coloured icon would lose the state tints and light/dark adaptation
 
+### Releasing (macOS)
+
+```bash
+scripts/publish-release.sh 1.5.1 notes.md   # from a clean main in sync with origin
+```
+
+Bumps `MARKETING_VERSION`, builds and checks the notarized DMG, runs `release-appcast.sh`, uploads
+the DMG and deltas, checks that every URL in the new feed item answers with the size the feed
+states, and only then commits and pushes `appcast.xml` — Sparkle reads it from `main`
+(`SUFeedURL`), so an earlier push would send clients to files not uploaded yet. Last, it creates
+the `v<version>` release with the notes and the DMG, marked Latest. The notes also become the
+release commit's body; `COMMIT_TRAILER` is appended to the commit only.
+
+Two kinds of GitHub release: `downloads` is Sparkle's bucket (`generate_appcast` takes one URL
+prefix, so every DMG and delta sits under that tag, listed by name — GitHub has no other order for
+a release's files), and one `v<version>` release per version for people, listed newest first.
+`dist/` must keep every released DMG: deltas are computed against them.
+
 ## Architecture
 
 Corvin is a multiplatform speech-to-text app using whisper.cpp.

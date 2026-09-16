@@ -460,7 +460,8 @@ struct CleanupSettingsView: View {
         // shove the sidebar sideways.
         .frame(maxWidth: 360, alignment: .leading)
         .onChange(of: selection.wrappedValue) { newValue in
-            confirmIfDestructive(newValue, selection)
+            // Never run a modal inside a SwiftUI update.
+            DispatchQueue.main.async { confirmIfDestructive(newValue, selection) }
         }
     }
 

@@ -96,6 +96,10 @@ struct HistoryFilesView: View {
                                   callIndex.remove(entry.url)
                                   selectedPath = nil
                               })
+                // A new entry gets a fresh card: without this the model choice
+                // and a pending download confirmation would follow the
+                // selection to the next call.
+                .id(entry.path)
         } else {
             Text("history.files.empty".localized)
                 .font(.caption)

@@ -229,7 +229,7 @@ enum SpeakerTranscriptBuilder {
         word.last.map(sentenceEnd.contains) ?? false
     }
 
-    private static func text(of words: [TimedWord]) -> String {
+    static func text(of words: [TimedWord]) -> String {
         let joined = words.map(\.text).joined(separator: " ")
         // The dash that marked the turn is not part of what was said.
         return String(joined.drop { dashes.contains($0) || $0 == " " })
@@ -241,9 +241,14 @@ enum SpeakerTranscriptBuilder {
 enum RolesFormatter {
 
     static func format(_ turns: [SpeakerTurn]) -> String {
+        format(turns) { "roles.speaker".localized(with: $0) }
+    }
+
+    /// - Parameter label: the name a speaker number is shown under.
+    static func format(_ turns: [SpeakerTurn], label: (Int) -> String) -> String {
         guard !turns.isEmpty else { return "" }
         return turns.map { turn in
-            "[\(timestamp(turn.start))] \("roles.speaker".localized(with: turn.speaker)):\n\(turn.text)"
+            "[\(timestamp(turn.start))] \(label(turn.speaker)):\n\(turn.text)"
         }.joined(separator: "\n\n") + "\n"
     }
 

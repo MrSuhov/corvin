@@ -445,3 +445,28 @@
 "vocab.fit" = "Se usan: %d de %d. El modelo admite un aviso limitado, así que pon primero los términos más importantes.";
 "vocab.done" = "Listo";
 "vocab.empty" = "Crea un diccionario para empezar.";
+
+/* Call recording */
+"call.menu.record" = "Grabar llamada";
+"call.menu.stop" = "Detener grabación de llamada (%@, %@)";
+"call.menu.starting" = "Iniciando grabación de llamada…";
+"call.menu.finishing" = "Guardando grabación de llamada…";
+"call.menu.appPlaying" = "%@ (reproduciendo audio)";
+"call.menu.noApps" = "No hay apps en ejecución";
+"call.menu.requiresMacOS13" = "La grabación de llamadas requiere macOS 13 o posterior";
+"call.menu.status.recording" = "grabando llamada de %@";
+"call.indicator.stop" = "Detener grabación";
+"call.fileName" = "Llamada %@ %@";
+"call.permissions.open" = "Abrir Ajustes";
+"call.error.microphoneDenied" = "Para grabar una llamada se necesita acceso al micrófono.";
+"call.error.appNotFound" = "%@ no se está ejecutando o aún no ha usado audio.";
+"call.error.screenCaptureDenied" = "Permite a Corvin grabar la pantalla y el audio del sistema en Ajustes del Sistema y vuelve a empezar.";
+"call.error.captureFailed" = "No se pudo grabar la llamada: %@";
+"call.warning.noSystemAudio" = "No llega sonido de %@: permite a Corvin grabar el audio del sistema";
+"call.warning.writeFailed" = "No se pudo escribir la grabación: deteniendo";
+"settings.permissions.systemAudio" = "Grabación del audio del sistema (llamadas)";
+"settings.permissions.screenRecording" = "Grabación de pantalla y audio del sistema (llamadas)";
+"roles.me" = "Yo";
+"roles.other" = "Interlocutor";
+"roles.otherNumbered" = "Interlocutor %d";
+"decoder.notTwoChannels" = "Se esperaba una grabación de llamada de dos canales.";

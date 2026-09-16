@@ -2,37 +2,71 @@ import AppKit
 import SwiftUI
 import Combine
 
-class FloatingIndicatorController {
+@MainActor
+final class FloatingIndicatorController {
     private var panel: NSPanel?
     private let sessionManager: SessionManager
+    private let callRecorder: CallRecorder
+    private var sessionState: SessionState = .idle
+    private var showsCall = false
+    /// A fade-out in flight; its completion must not hide new content.
+    private var isHiding = false
     private var cancellables = Set<AnyCancellable>()
 
-    init(sessionManager: SessionManager) {
+    init(sessionManager: SessionManager, callRecorder: CallRecorder) {
         self.sessionManager = sessionManager
+        self.callRecorder = callRecorder
+
+        callRecorder.$state
+            .map { $0 != .idle }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &cancellables)
     }
 
     func updateState(_ state: SessionState) {
-        switch state {
-        case .idle:
+        sessionState = state
+        refresh()
+    }
+
+    /// Dictation has the pill while it runs; a call recording gets it back once
+    /// dictation is idle again.
+    private func refresh() {
+        if sessionState != .idle {
+            showsCall = false
+            show(FloatingIndicatorView(state: sessionState, sessionManager: sessionManager), width: 200)
+        } else if callRecorder.state != .idle {
+            // The call view observes the recorder itself; rebuilding it would
+            // only reset it.
+            guard !showsCall || panel?.isVisible != true else { return }
+            showsCall = true
+            show(CallIndicatorView(recorder: callRecorder), width: CallIndicatorView.width)
+        } else {
+            showsCall = false
             hidePanel()
-        case .recording, .transcribing, .done, .error, .inserting:
-            showPanel(for: state)
         }
     }
 
-    private func showPanel(for state: SessionState) {
+    private func show<Content: View>(_ view: Content, width: CGFloat) {
         if panel == nil {
             createPanel()
         }
 
         guard let panel = panel else { return }
 
-        let hostingView = NSHostingView(rootView: FloatingIndicatorView(state: state, sessionManager: sessionManager))
-        panel.contentView = hostingView
+        panel.contentView = NSHostingView(rootView: view)
+        panel.setContentSize(NSSize(width: width, height: 44))
 
         positionPanel(panel)
 
-        if !panel.isVisible {
+        // Cancels a fade-out in flight: without this the panel would be left
+        // visible but transparent, and the fade's completion would order it
+        // out from under the new content.
+        isHiding = false
+        if panel.isVisible {
+            panel.animator().alphaValue = 1
+        } else {
             panel.alphaValue = 0
             panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
@@ -44,10 +78,13 @@ class FloatingIndicatorController {
 
     private func hidePanel() {
         guard let panel = panel, panel.isVisible else { return }
+        isHiding = true
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.3
             panel.animator().alphaValue = 0
-        }, completionHandler: {
+        }, completionHandler: { [weak self] in
+            guard self?.isHiding == true else { return }
+            self?.isHiding = false
             panel.orderOut(nil)
         })
     }

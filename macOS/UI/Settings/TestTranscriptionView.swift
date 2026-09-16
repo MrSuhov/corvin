@@ -513,7 +513,7 @@ private struct JobRow: View {
                 .frame(minWidth: 90, alignment: .leading)
                 .layoutPriority(1)
 
-            if job.mode == .roles {
+            if job.mode != .plain {
                 ModeBadge(title: "test.history.badge.roles".localized, highlighted: false)
             }
 

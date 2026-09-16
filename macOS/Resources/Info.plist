@@ -36,6 +36,9 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Corvin uses the microphone to record your voice and convert it to text.</string>
+    <!-- Call recording: the other side's audio, from the app the user picks. -->
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Corvin records the other side of a call from the app you choose, to transcribe the conversation on this Mac.</string>
     <key>NSAccessibilityUsageDescription</key>
     <string>Corvin uses the Accessibility API to insert recognized text into the active input field.</string>
     <!--

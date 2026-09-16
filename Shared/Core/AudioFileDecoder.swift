@@ -24,6 +24,7 @@ enum AudioFileDecoder {
         case unsupportedCodec(String)
         case emptyResult
         case fileTooLarge(String)
+        case notTwoChannels
 
         var errorDescription: String? {
             switch self {
@@ -32,6 +33,7 @@ enum AudioFileDecoder {
             case .unsupportedCodec(let codec): return "decoder.unsupportedCodec".localized(with: codec)
             case .emptyResult: return "decoder.emptyResult".localized
             case .fileTooLarge(let name): return "decoder.fileTooLarge".localized(with: name)
+            case .notTwoChannels: return "decoder.notTwoChannels".localized
             }
         }
     }
@@ -232,6 +234,90 @@ enum AudioFileDecoder {
         let sum = taps.reduce(0, +)
         return taps.map { Float($0 / sum) }
     }()
+
+    /// Decode a two-channel recording into one 16 kHz Int16 mono track per
+    /// channel. Corvin's call recordings put the microphone on the left and the
+    /// other side on the right.
+    ///
+    /// Reads in one-second blocks: a call runs for an hour, and `decode(url:)`
+    /// holds the whole file in one buffer at its source rate.
+    static func decodeChannels(url: URL) throws -> (left: Data, right: Data) {
+        let file: AVAudioFile
+        do {
+            file = try AVAudioFile(forReading: url)
+        } catch {
+            throw DecoderError.cannotOpenFile(error.localizedDescription)
+        }
+        // `processingFormat` is always deinterleaved Float32.
+        let source = file.processingFormat
+        guard source.channelCount == 2 else { throw DecoderError.notTwoChannels }
+        guard let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: source.sampleRate,
+                                       channels: 1, interleaved: false),
+              let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000,
+                                         channels: 1, interleaved: true),
+              let block = AVAudioPCMBuffer(pcmFormat: source, frameCapacity: AVAudioFrameCount(source.sampleRate)),
+              let leftConverter = AVAudioConverter(from: mono, to: target),
+              let rightConverter = AVAudioConverter(from: mono, to: target)
+        else {
+            throw DecoderError.conversionFailed("Cannot create formats for \(source)")
+        }
+        let converters = [leftConverter, rightConverter]
+        var output = [Data(), Data()]
+
+        /// `input == nil` flushes the converter at the end of the file.
+        func convert(_ channel: Int, _ input: AVAudioPCMBuffer?) throws {
+            let frames = Double(input?.frameLength ?? 0)
+            guard let converted = AVAudioPCMBuffer(
+                pcmFormat: target,
+                frameCapacity: AVAudioFrameCount(frames * 16000 / source.sampleRate) + 1024
+            ) else {
+                throw DecoderError.conversionFailed("Cannot create destination buffer")
+            }
+            var fed = false
+            var error: NSError?
+            converters[channel].convert(to: converted, error: &error) { _, status in
+                guard let input else {
+                    status.pointee = .endOfStream
+                    return nil
+                }
+                if fed {
+                    status.pointee = .noDataNow
+                    return nil
+                }
+                fed = true
+                status.pointee = .haveData
+                return input
+            }
+            if let error { throw DecoderError.conversionFailed(error.localizedDescription) }
+            output[channel].append(Data(bytes: converted.int16ChannelData![0],
+                                        count: Int(converted.frameLength) * MemoryLayout<Int16>.size))
+        }
+
+        while file.framePosition < file.length {
+            try file.read(into: block)
+            let frames = Int(block.frameLength)
+            guard frames > 0 else { break }
+            for channel in 0..<2 {
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: AVAudioFrameCount(frames)) else {
+                    throw DecoderError.conversionFailed("Cannot create channel buffer")
+                }
+                buffer.frameLength = AVAudioFrameCount(frames)
+                buffer.floatChannelData![0].update(from: block.floatChannelData![channel], count: frames)
+                try convert(channel, buffer)
+            }
+        }
+        for channel in 0..<2 { try convert(channel, nil) }
+
+        guard !output[0].isEmpty else { throw DecoderError.emptyResult }
+        return (output[0], output[1])
+    }
+
+    /// Whether 16 kHz Int16 audio holds anything above the noise floor.
+    static func isAudible(_ pcm: Data, threshold: Int16 = 100) -> Bool {
+        pcm.withUnsafeBytes { raw in
+            raw.bindMemory(to: Int16.self).contains { $0 > threshold || $0 < -threshold }
+        }
+    }
 
     /// Decode any supported audio format to 16kHz Int16 mono PCM Data.
     static func decode(url: URL) throws -> Data {

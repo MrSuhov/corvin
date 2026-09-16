@@ -529,6 +529,7 @@ struct PermissionsSettingsView: View {
     private let accessibilityService = AccessibilityService()
     @State private var hasAccessibility = false
     @State private var hasMicrophone = false
+    @State private var hasScreenCapture = false
     @State private var pollTimer: Timer?
 
     var body: some View {
@@ -559,6 +560,8 @@ struct PermissionsSettingsView: View {
                 }
             }
 
+            callRecordingPermission
+
             Spacer()
 
             Button("settings.permissions.resetAll".localized) {
@@ -585,9 +588,42 @@ struct PermissionsSettingsView: View {
         }
     }
 
+    /// Recording a call needs the other app's audio: "System Audio Recording"
+    /// for a process tap on 14.2+, which has no API to read its status, or
+    /// Screen Recording for ScreenCaptureKit on 13–14.1.
+    @ViewBuilder
+    private var callRecordingPermission: some View {
+        if #available(macOS 14.2, *) {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform.circle")
+                    .foregroundColor(.secondary)
+                Text("settings.permissions.systemAudio".localized)
+                Button("call.permissions.open".localized) {
+                    CallRecorder.openSystemAudioSettings()
+                }
+                .modifier(BorderedButtonCompat())
+            }
+        } else if #available(macOS 13.0, *) {
+            HStack(spacing: 8) {
+                Image(systemName: hasScreenCapture ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundColor(hasScreenCapture ? .green : .red)
+                Text("settings.permissions.screenRecording".localized)
+                if !hasScreenCapture {
+                    Button("common.request".localized) {
+                        if !CGRequestScreenCaptureAccess() {
+                            CallRecorder.openSystemAudioSettings()
+                        }
+                    }
+                    .modifier(BorderedButtonCompat())
+                }
+            }
+        }
+    }
+
     private func checkPermissions() {
         hasAccessibility = AXIsProcessTrusted()
         hasMicrophone = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        hasScreenCapture = CGPreflightScreenCaptureAccess()
     }
 
     private func startPolling() {

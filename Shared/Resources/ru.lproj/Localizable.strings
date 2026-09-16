@@ -445,3 +445,28 @@
 "vocab.fit" = "Используется: %d из %d. Подсказка модели ограничена — важные термины ставьте первыми.";
 "vocab.done" = "Готово";
 "vocab.empty" = "Создайте словарь, чтобы начать.";
+
+/* Call recording */
+"call.menu.record" = "Записать звонок";
+"call.menu.stop" = "Остановить запись звонка (%@, %@)";
+"call.menu.starting" = "Запуск записи звонка…";
+"call.menu.finishing" = "Сохранение записи звонка…";
+"call.menu.appPlaying" = "%@ (звучит)";
+"call.menu.noApps" = "Нет запущенных приложений";
+"call.menu.requiresMacOS13" = "Запись звонков требует macOS 13 или новее";
+"call.menu.status.recording" = "запись звонка из %@";
+"call.indicator.stop" = "Остановить запись";
+"call.fileName" = "Звонок %@ %@";
+"call.permissions.open" = "Открыть настройки";
+"call.error.microphoneDenied" = "Для записи звонка нужен доступ к микрофону.";
+"call.error.appNotFound" = "%@ не запущено или ещё не использовало звук.";
+"call.error.screenCaptureDenied" = "Разрешите Corvin запись экрана и системного звука в Системных настройках и запустите снова.";
+"call.error.captureFailed" = "Не удалось записать звонок: %@";
+"call.warning.noSystemAudio" = "Нет звука от %@ — разрешите Corvin запись системного звука";
+"call.warning.writeFailed" = "Не удалось записать файл — остановка";
+"settings.permissions.systemAudio" = "Запись системного звука (звонки)";
+"settings.permissions.screenRecording" = "Запись экрана и системного звука (звонки)";
+"roles.me" = "Я";
+"roles.other" = "Собеседник";
+"roles.otherNumbered" = "Собеседник %d";
+"decoder.notTwoChannels" = "Ожидалась двухканальная запись звонка.";

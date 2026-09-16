@@ -2,12 +2,20 @@ import AppKit
 import SwiftUI
 import Combine
 
-class StatusBarController: NSObject {
+@MainActor
+final class StatusBarController: NSObject {
     private var statusItem: NSStatusItem
     private let sessionManager: SessionManager
     private let modelManager: ModelManager
     private let historyStore: HistoryStore
+    private let callRecorder: CallRecorder
     private weak var appDelegate: AppDelegate?
+
+    /// Filled when it opens; see `fillCallApps`.
+    private weak var callAppsMenu: NSMenu?
+    private var offeredApps: [CallApp] = []
+    /// Its title carries the elapsed time, refreshed each time the menu opens.
+    private weak var callStopItem: NSMenuItem?
 
     /// Mirrors `UpdaterService.pendingUpdateVersion`; drives both the badge on
     /// the icon and the "Обновить" menu item.
@@ -16,10 +24,12 @@ class StatusBarController: NSObject {
     private var lastState: SessionState = .idle
     private var cancellables = Set<AnyCancellable>()
 
-    init(sessionManager: SessionManager, modelManager: ModelManager, historyStore: HistoryStore, appDelegate: AppDelegate) {
+    init(sessionManager: SessionManager, modelManager: ModelManager, historyStore: HistoryStore,
+         callRecorder: CallRecorder, appDelegate: AppDelegate) {
         self.sessionManager = sessionManager
         self.modelManager = modelManager
         self.historyStore = historyStore
+        self.callRecorder = callRecorder
         self.appDelegate = appDelegate
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -46,6 +56,17 @@ class StatusBarController: NSObject {
             .sink { [weak self] progress in
                 guard let self = self, self.updateProgress != progress else { return }
                 self.updateProgress = progress
+                self.updateState(self.lastState)
+            }
+            .store(in: &cancellables)
+
+        // A call records alongside dictation: it has its own menu items, and
+        // the icon stays red for it while dictation is idle. Received on the
+        // main queue so the sink runs after `@Published` has stored the value.
+        callRecorder.$state.combineLatest(callRecorder.$warning)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
                 self.updateState(self.lastState)
             }
             .store(in: &cancellables)
@@ -135,7 +156,7 @@ class StatusBarController: NSObject {
 
         switch state {
         case .idle:
-            button.contentTintColor = nil
+            button.contentTintColor = callRecorder.isRecording ? .systemRed : nil
         case .recording:
             button.contentTintColor = .systemRed
         case .transcribing:
@@ -155,7 +176,12 @@ class StatusBarController: NSObject {
         // Status
         let statusText: String
         switch sessionManager.state {
-        case .idle: statusText = "menu.status.ready".localized
+        case .idle:
+            if case .recording(let app, _) = callRecorder.state {
+                statusText = "call.menu.status.recording".localized(with: app.name)
+            } else {
+                statusText = "menu.status.ready".localized
+            }
         case .recording: statusText = "menu.status.recording".localized
         case .transcribing: statusText = "menu.status.transcribing".localized
         case .inserting: statusText = "menu.status.inserting".localized
@@ -175,6 +201,12 @@ class StatusBarController: NSObject {
         )
         transcribeFile.target = self
         menu.addItem(transcribeFile)
+        menu.addItem(makeCallItem())
+        if let warning = callRecorder.warning {
+            let item = NSMenuItem(title: warning.text, action: #selector(openSystemAudioSettings), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
         menu.addItem(NSMenuItem.separator())
 
         // Recent records
@@ -252,7 +284,83 @@ class StatusBarController: NSObject {
         quit.target = self
         menu.addItem(quit)
 
+        menu.delegate = self
         self.statusItem.menu = menu
+    }
+
+    // MARK: - Call recording
+
+    private func makeCallItem() -> NSMenuItem {
+        callStopItem = nil
+        switch callRecorder.state {
+        case .recording(let app, let since):
+            let item = NSMenuItem(title: Self.stopTitle(app, since: since),
+                                  action: #selector(stopCallRecording), keyEquivalent: "")
+            item.target = self
+            callStopItem = item
+            return item
+        case .starting:
+            return disabledItem("call.menu.starting".localized)
+        case .finishing:
+            return disabledItem("call.menu.finishing".localized)
+        case .idle, .failed:
+            guard CallRecorder.isSupported else {
+                return disabledItem("call.menu.requiresMacOS13".localized)
+            }
+            let item = NSMenuItem(title: "call.menu.record".localized, action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            submenu.delegate = self
+            callAppsMenu = submenu
+            item.submenu = submenu
+            return item
+        }
+    }
+
+    private func disabledItem(_ title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    private static func stopTitle(_ app: CallApp, since: Date) -> String {
+        "call.menu.stop".localized(with: app.name, CallIndicatorView.elapsed(since: since))
+    }
+
+    /// Listed when the submenu opens rather than when the menu is built: which
+    /// apps run and play audio changes all the time.
+    fileprivate func fillCallApps(_ menu: NSMenu) {
+        menu.removeAllItems()
+        offeredApps = AudioAppCatalog.apps(lastUsed: callRecorder.lastBundleID)
+        guard !offeredApps.isEmpty else {
+            menu.addItem(disabledItem("call.menu.noApps".localized))
+            return
+        }
+        for (index, app) in offeredApps.enumerated() {
+            let title = app.isPlayingAudio ? "call.menu.appPlaying".localized(with: app.name) : app.name
+            let item = NSMenuItem(title: title, action: #selector(startCallRecording(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.image = AudioAppCatalog.icon(for: app)
+            menu.addItem(item)
+        }
+    }
+
+    fileprivate func refreshCallStopItem() {
+        guard let item = callStopItem, case .recording(let app, let since) = callRecorder.state else { return }
+        item.title = Self.stopTitle(app, since: since)
+    }
+
+    @objc private func startCallRecording(_ sender: NSMenuItem) {
+        guard offeredApps.indices.contains(sender.tag) else { return }
+        callRecorder.start(app: offeredApps[sender.tag])
+    }
+
+    @objc private func stopCallRecording() {
+        callRecorder.stop()
+    }
+
+    @objc private func openSystemAudioSettings() {
+        CallRecorder.openSystemAudioSettings()
     }
 
     private static func progressTitle(_ progress: UpdaterService.Progress) -> String {
@@ -302,5 +410,15 @@ class StatusBarController: NSObject {
 
     @objc private func quitApp() {
         NSApp.terminate(nil)
+    }
+}
+
+extension StatusBarController: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === callAppsMenu {
+            fillCallApps(menu)
+        } else {
+            refreshCallStopItem()
+        }
     }
 }

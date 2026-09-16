@@ -6,9 +6,11 @@ import Combine
 enum TranscriptMode: String, Codable {
     case plain
     case roles
+    /// A call recording: roles from its two channels, filed as a roles transcript.
+    case call
 
     /// `talk.txt` vs `talk_roles.txt`.
-    var fileSuffix: String { self == .roles ? "_roles" : "" }
+    var fileSuffix: String { self == .plain ? "" : "_roles" }
 }
 
 /// Every audio file Corvin has transcribed, persisted so the Transcription
@@ -28,6 +30,10 @@ final class TranscriptRegistry: ObservableObject {
         let sourceModified: Date
         let dictionaryName: String?
         let date: Date
+        /// The roles slot also holds call transcripts; this is what tells
+        /// "transcribe again" to read the channels again instead of mixing
+        /// them down. Absent in files written before call recording existed.
+        var isCall: Bool?
 
         var outputURL: URL { URL(fileURLWithPath: outputPath) }
     }
@@ -42,8 +48,8 @@ final class TranscriptRegistry: ObservableObject {
         var sourceURL: URL { URL(fileURLWithPath: sourcePath) }
 
         subscript(mode: TranscriptMode) -> Variant? {
-            get { mode == .roles ? roles : plain }
-            set { if mode == .roles { roles = newValue } else { plain = newValue } }
+            get { mode == .plain ? plain : roles }
+            set { if mode == .plain { plain = newValue } else { roles = newValue } }
         }
     }
 
@@ -97,12 +103,21 @@ final class TranscriptRegistry: ObservableObject {
         states[record.sourcePath]?[mode]
     }
 
+    /// The mode a file has to be transcribed in again, if it is remembered as
+    /// a call recording.
+    func mode(for source: URL) -> TranscriptMode? {
+        let path = source.standardizedFileURL.path
+        guard let record = records.first(where: { $0.sourcePath == path }) else { return nil }
+        return record.roles?.isCall == true ? .call : nil
+    }
+
     func add(source: URL, mode: TranscriptMode, output: URL, stamp: SourceStamp, dictionaryName: String?) {
         let path = source.standardizedFileURL.path
         var record = records.first { $0.sourcePath == path }
             ?? Record(sourcePath: path, plain: nil, roles: nil, updatedAt: Date())
         record[mode] = Variant(outputPath: output.path, sourceSize: stamp.size,
-                               sourceModified: stamp.modified, dictionaryName: dictionaryName, date: Date())
+                               sourceModified: stamp.modified, dictionaryName: dictionaryName, date: Date(),
+                               isCall: mode == .call)
         record.updatedAt = Date()
         records.removeAll { $0.sourcePath == path }
         records.insert(record, at: 0)

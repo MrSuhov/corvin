@@ -445,3 +445,28 @@
 "vocab.fit" = "Used: %d of %d. The model accepts a limited prompt, so put the most important terms first.";
 "vocab.done" = "Done";
 "vocab.empty" = "Create a dictionary to get started.";
+
+/* Call recording */
+"call.menu.record" = "Record Call";
+"call.menu.stop" = "Stop Call Recording (%@, %@)";
+"call.menu.starting" = "Starting call recording…";
+"call.menu.finishing" = "Saving call recording…";
+"call.menu.appPlaying" = "%@ (playing audio)";
+"call.menu.noApps" = "No running apps";
+"call.menu.requiresMacOS13" = "Call recording requires macOS 13 or later";
+"call.menu.status.recording" = "recording call from %@";
+"call.indicator.stop" = "Stop recording";
+"call.fileName" = "Call %@ %@";
+"call.permissions.open" = "Open Settings";
+"call.error.microphoneDenied" = "Recording a call needs microphone access.";
+"call.error.appNotFound" = "%@ is not running or has not used audio yet.";
+"call.error.screenCaptureDenied" = "Allow Corvin to record the screen and system audio in System Settings, then start again.";
+"call.error.captureFailed" = "Could not record the call: %@";
+"call.warning.noSystemAudio" = "No sound from %@ — allow System Audio Recording for Corvin";
+"call.warning.writeFailed" = "Could not write the recording — stopping";
+"settings.permissions.systemAudio" = "System audio recording (calls)";
+"settings.permissions.screenRecording" = "Screen and system audio recording (calls)";
+"roles.me" = "Me";
+"roles.other" = "Other";
+"roles.otherNumbered" = "Other %d";
+"decoder.notTwoChannels" = "Expected a two-channel call recording.";

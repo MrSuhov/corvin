@@ -169,7 +169,14 @@ final class FileTranscriptionQueue: ObservableObject {
     /// "Transcribe again" on a file from the transcribed list, with the
     /// current checkbox.
     func rerun(_ url: URL) {
-        enqueue(urls: [url], mode: currentMode)
+        // A call recording is transcribed as a call again: its channels are
+        // what tell the speakers apart.
+        enqueue(urls: [url], mode: registry.mode(for: url) ?? currentMode)
+    }
+
+    /// A finished call recording: two channels, the user and the other side.
+    func enqueueCall(_ url: URL) {
+        enqueue(urls: [url], mode: .call)
     }
 
     private func enqueue(urls: [URL], mode: TranscriptMode) {
@@ -344,7 +351,7 @@ final class FileTranscriptionQueue: ObservableObject {
         switch job.status {
         case .pending:
             update(jobID) {
-                $0.mode = currentMode
+                $0.mode = restartMode(for: $0.mode)
                 $0.vocabulary = vocabularies.active
             }
         case .waitingForMic, .decoding, .diarizing, .transcribing:
@@ -352,8 +359,14 @@ final class FileTranscriptionQueue: ObservableObject {
             cancelCurrent.value = true
             flog("FileQueue: restarting \(job.url.lastPathComponent) as \(currentMode.rawValue)")
         case .saved, .savedToFallback, .empty, .failed, .cancelled:
-            enqueue(urls: [job.url])
+            enqueue(urls: [job.url], mode: restartMode(for: job.mode))
         }
+    }
+
+    /// A call recording stays a call: its channels tell the speakers apart,
+    /// and the dialog checkbox does not apply to it.
+    private func restartMode(for mode: TranscriptMode) -> TranscriptMode {
+        mode == .call ? .call : currentMode
     }
 
     func clearFinished() {
@@ -433,6 +446,11 @@ final class FileTranscriptionQueue: ObservableObject {
         // compares against this to flag a file edited afterwards.
         let stamp = TranscriptRegistry.SourceStamp.read(url)
 
+        if mode == .call {
+            await processCall(jobID, url: url, stamp: stamp, vocabulary: vocabulary)
+            return
+        }
+
         update(jobID) { $0.status = .decoding }
         let pcm: Data
         do {
@@ -453,11 +471,7 @@ final class FileTranscriptionQueue: ObservableObject {
         }
 
         let cancel = cancelCurrent
-        let progress: (Int, Int) -> Void = { [weak self] current, total in
-            Task { @MainActor in
-                self?.update(jobID) { $0.progress = ChunkProgress(current: current, total: total) }
-            }
-        }
+        let progress = progressHandler(for: jobID)
 
         // Diarization first: it takes seconds, and a missing model or helper
         // should surface before minutes of whisper rather than after.
@@ -486,21 +500,7 @@ final class FileTranscriptionQueue: ObservableObject {
             $0.progress = .none
         }
 
-        var prompt: String?
-        if let terms = vocabulary?.terms, !terms.isEmpty {
-            let engine = self.engine
-            do {
-                let fitted = try await Task.detached(priority: .utility) {
-                    try engine.fitPrompt(terms: terms)
-                }.value
-                prompt = fitted.prompt
-                flog("FileQueue: vocabulary '\(vocabulary?.name ?? "")': \(fitted.used) of \(terms.count) terms fit the prompt")
-            } catch {
-                // Without the model there is nothing to transcribe either;
-                // let transcribeTimed report that.
-                flog("FileQueue: could not fit vocabulary prompt: \(error)")
-            }
-        }
+        let prompt = await fittedPrompt(for: vocabulary)
 
         let busy = micBusy
         let result: TimedTranscriptionResult
@@ -534,7 +534,124 @@ final class FileTranscriptionQueue: ObservableObject {
             text = plainText
         }
         update(jobID) { $0.text = text }
+        save(jobID, text: text, url: url, mode: mode, stamp: stamp, vocabulary: vocabulary)
+    }
 
+    /// A call recording: the left channel is the user, the right one the app,
+    /// each transcribed on its own. The other side is diarized when the models
+    /// are there, to tell voices apart in a group call; without them it is one
+    /// "Other", which is all a one-to-one call needs.
+    private func processCall(_ jobID: UUID, url: URL, stamp: TranscriptRegistry.SourceStamp?,
+                             vocabulary: Vocabulary?) async {
+        update(jobID) { $0.status = .decoding }
+        let channels: (left: Data, right: Data)
+        do {
+            channels = try await Task.detached(priority: .utility) {
+                try AudioFileDecoder.decodeChannels(url: url)
+            }.value
+        } catch {
+            flog("FileQueue: decode failed for call \(url.lastPathComponent): \(error)")
+            finish(jobID, .failed, error: error.localizedDescription)
+            return
+        }
+        if cancelCurrent.value {
+            finishCancelled(jobID)
+            return
+        }
+
+        // Whisper invents text on silence, so a muted microphone or a denied
+        // system-audio permission must not reach it.
+        let audible = [AudioFileDecoder.isAudible(channels.left), AudioFileDecoder.isAudible(channels.right)]
+        let cancel = cancelCurrent
+
+        var speakers: [SpeakerSegment] = []
+        if audible[1], diarizationProblem() == nil {
+            update(jobID) { $0.status = .diarizing }
+            do {
+                speakers = try await DiarizationClient.diarize(
+                    pcm: channels.right,
+                    modelsDirectory: diarizationModels.directory,
+                    onProgress: progressHandler(for: jobID),
+                    shouldCancel: { cancel.value }
+                )
+            } catch is CancellationError {
+                finishCancelled(jobID)
+                return
+            } catch {
+                flog("FileQueue: diarizing the other side of \(url.lastPathComponent) failed, keeping one voice: \(error)")
+            }
+        }
+
+        update(jobID) {
+            $0.status = .transcribing
+            $0.progress = .none
+        }
+        let prompt = await fittedPrompt(for: vocabulary)
+        let busy = micBusy
+        var words: [[TimedWord]] = [[], []]
+        do {
+            for (index, pcm) in [channels.left, channels.right].enumerated() where audible[index] {
+                words[index] = try await engine.transcribeTimed(
+                    audioData: pcm,
+                    options: TranscriptionOptions(prompt: prompt, wordTimestamps: true),
+                    onProgress: progressHandler(for: jobID, part: index, of: 2),
+                    shouldYield: { busy.value },
+                    shouldCancel: { cancel.value }
+                ).words
+            }
+        } catch is CancellationError {
+            flog("FileQueue: transcription of call \(url.lastPathComponent) interrupted")
+            finishCancelled(jobID)
+            return
+        } catch {
+            flog("FileQueue: transcribe failed for call \(url.lastPathComponent): \(error)")
+            finish(jobID, .failed, error: error.localizedDescription)
+            return
+        }
+
+        let mine = EchoFilter.filter(me: words[0], other: words[1])
+        let turns = CallTranscriptBuilder.build(me: mine, other: words[1], otherSegments: speakers)
+        guard !turns.isEmpty else {
+            finish(jobID, .empty)
+            return
+        }
+        let text = CallTranscriptBuilder.format(turns)
+        update(jobID) { $0.text = text }
+        save(jobID, text: text, url: url, mode: .call, stamp: stamp, vocabulary: vocabulary)
+    }
+
+    /// Chunk progress for one of `parts` equal-length runs of a job, so two
+    /// channels fill one bar.
+    private func progressHandler(for jobID: UUID, part: Int = 0, of parts: Int = 1) -> (Int, Int) -> Void {
+        { [weak self] current, total in
+            Task { @MainActor in
+                self?.update(jobID) {
+                    $0.progress = ChunkProgress(current: part * total + current, total: total * parts)
+                }
+            }
+        }
+    }
+
+    /// The job's vocabulary as a whisper prompt, trimmed to what fits.
+    private func fittedPrompt(for vocabulary: Vocabulary?) async -> String? {
+        guard let terms = vocabulary?.terms, !terms.isEmpty else { return nil }
+        let engine = self.engine
+        do {
+            let fitted = try await Task.detached(priority: .utility) {
+                try engine.fitPrompt(terms: terms)
+            }.value
+            flog("FileQueue: vocabulary '\(vocabulary?.name ?? "")': \(fitted.used) of \(terms.count) terms fit the prompt")
+            return fitted.prompt
+        } catch {
+            // Without the model there is nothing to transcribe either;
+            // let transcribeTimed report that.
+            flog("FileQueue: could not fit vocabulary prompt: \(error)")
+            return nil
+        }
+    }
+
+    private func save(_ jobID: UUID, text: String, url: URL, mode: TranscriptMode,
+                      stamp: TranscriptRegistry.SourceStamp?, vocabulary: Vocabulary?) {
         do {
             let output = try TranscriptSaver.write(text: text,
                                                    audioName: url.lastPathComponent,
@@ -610,7 +727,7 @@ final class FileTranscriptionQueue: ObservableObject {
         }
         restartJobID = nil
         let url = jobs[index].url
-        jobs[index] = Job(url: url, mode: currentMode, vocabulary: vocabularies.active)
+        jobs[index] = Job(url: url, mode: restartMode(for: jobs[index].mode), vocabulary: vocabularies.active)
     }
 
     // MARK: - Manual saving

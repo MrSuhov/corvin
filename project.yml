@@ -78,7 +78,7 @@ targets:
         LIBRARY_SEARCH_PATHS:
           - "$(SRCROOT)/vendor/whisper.cpp/build-universal"
           - "$(SRCROOT)/vendor/opus-build/macos-universal/lib"
-        OTHER_LDFLAGS: "-lwhisper -lggml -lggml-base -lggml-cpu -lggml-metal -lggml-blas -lopusfile -lopus -logg -lc++ -framework Accelerate -framework Metal -framework MetalKit"
+        OTHER_LDFLAGS: "-lwhisper -lggml -lggml-base -lggml-cpu -lggml-metal -lggml-blas -lopusfile -lopus -logg -lc++ -framework Accelerate -framework Metal -framework MetalKit -framework CoreAudio -framework CoreMedia -weak_framework ScreenCaptureKit"
         ENABLE_HARDENED_RUNTIME: YES
         MACOSX_DEPLOYMENT_TARGET: "11.0"
         SWIFT_INCLUDE_PATHS: "$(SRCROOT)/Sources/CWhisper/include $(SRCROOT)/Sources/COpus/include"

@@ -16,6 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var transcriptRegistry: TranscriptRegistry!
     private var vocabularyStore: VocabularyStore!
     private var dictationCoordinator: DictationCoordinator!
+    private(set) var callRecorder: CallRecorder!
 
     private var statusBarController: StatusBarController!
     private var floatingIndicator: FloatingIndicatorController!
@@ -73,6 +74,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                                           diarizationModels: diarizationModels,
                                           registry: transcriptRegistry,
                                           vocabularies: vocabularyStore)
+        callRecorder = CallRecorder(fileQueue: fileQueue)
         hotkeyService = HotkeyService()
         dictationCoordinator = DictationCoordinator(
             sessionManager: sessionManager,
@@ -87,10 +89,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             sessionManager: sessionManager,
             modelManager: modelManager,
             historyStore: historyStore,
+            callRecorder: callRecorder,
             appDelegate: self
         )
 
-        floatingIndicator = FloatingIndicatorController(sessionManager: sessionManager)
+        floatingIndicator = FloatingIndicatorController(sessionManager: sessionManager, callRecorder: callRecorder)
 
         // Start Sparkle: begins the background update schedule and backs the
         // "Check for Updates…" menu item.
@@ -156,8 +159,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         sessionManager.$state
             .sink { [weak self] state in
-                self?.statusBarController.updateState(state)
-                self?.floatingIndicator.updateState(state)
+                // Both controllers read the main-actor `CallRecorder`.
+                Task { @MainActor in
+                    self?.statusBarController.updateState(state)
+                    self?.floatingIndicator.updateState(state)
+                }
             }
             .store(in: &cancellables)
 
@@ -194,6 +200,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         flog("applicationWillTerminate")
         hotkeyService?.stop()
+        callRecorder?.finishForTermination()
         _ = audioCaptureService?.stopCapture()
         transcriptionEngine?.unloadModel()
         floatingIndicator?.updateState(.idle)

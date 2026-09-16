@@ -6,3 +6,4 @@
 "NSRemovableVolumesUsageDescription" = "Corvin saves transcripts next to the audio files you transcribe from external drives.";
 "NSNetworkVolumesUsageDescription" = "Corvin saves transcripts next to the audio files you transcribe from network volumes.";
 "NSLocalNetworkUsageDescription" = "Corvin uses the local network only to talk between the app and the keyboard inside your device.";
+"NSAudioCaptureUsageDescription" = "Corvin records the other side of a call from the app you choose, to transcribe the conversation on this Mac.";

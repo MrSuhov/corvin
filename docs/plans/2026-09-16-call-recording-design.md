@@ -64,9 +64,12 @@ RemoteSource ──────────────────────�
 - **`TimelineWriter`** — позиция сэмпла `(hostTime − t0) × 16000`.
   - Разрыв заполняется тишиной; расхождение больше 20 мс — переякорение.
   - Канал без буферов дольше 0,5 с при живом втором — дописываются нули (SCK молчит на тишине).
-  - Блоки по 100 мс → `AVAudioFile`: CAF, AAC, 2 канала, 16 кГц (~48 кбит/с, ~21 МБ/час).
-    CAF читается и после аварийного завершения.
-  - «Стоп» → `AVAssetExportSession` passthrough в `.m4a`; не вышло — остаётся `.caf`.
+  - Блоки → `AVAudioFile`: CAF, **16-bit PCM**, 2 канала, 16 кГц (~230 МБ/час, во время записи
+    в `Application Support/Corvin/Recordings`). Только PCM-CAF читается после аварийного завершения:
+    у AAC таблица пакетов пишется при закрытии. Оставшийся при запуске `.caf` — прерванный звонок,
+    он дописывается и распознаётся.
+  - «Стоп» → перекодирование в AAC `.m4a` (48 кбит/с, ~21 МБ/час) в папку звонков, PCM удаляется;
+    не вышло — `.caf` переносится в `Application Support/Corvin/Calls`.
 - **`CallRecorder`** — `@MainActor ObservableObject`, владеет `AppDelegate`.
   `state: idle | starting | recording(app, startedAt) | finishing | failed(LocalizedMessage)`.
   `SessionState` **не расширяется**: любое не-idle состояние останавливает очередь файлов

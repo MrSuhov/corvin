@@ -52,6 +52,7 @@ final class CallRecorder: ObservableObject {
     }
 
     private let fileQueue: FileTranscriptionQueue
+    private let callIndex: CallIndex
     private var sources: [CallAudioSource] = []
     private var writer: CallTimelineWriter?
     private var levelTimer: Timer?
@@ -61,8 +62,9 @@ final class CallRecorder: ObservableObject {
     /// only works from `.recording`, so the start path has to see it.
     private var endedDuringStart: LocalizedMessage?
 
-    init(fileQueue: FileTranscriptionQueue) {
+    init(fileQueue: FileTranscriptionQueue, callIndex: CallIndex) {
         self.fileQueue = fileQueue
+        self.callIndex = callIndex
         recoverInterruptedRecordings()
     }
 
@@ -83,7 +85,7 @@ final class CallRecorder: ObservableObject {
 
     /// Stop and hand the recording to the transcription queue.
     func stop() {
-        guard case .recording(let app, _) = state, let writer else { return }
+        guard case .recording(let app, let startedAt) = state, let writer else { return }
         state = .finishing(app)
         stopCapture()
         self.writer = nil
@@ -95,13 +97,22 @@ final class CallRecorder: ObservableObject {
             guard duration >= Self.minimumDuration else {
                 flog("CallRecorder: \(duration)s is too short to keep")
                 for part in parts { try? FileManager.default.removeItem(at: part) }
+                Self.removeSidecar(of: parts)
                 finishIdle()
                 return
             }
             let outputs = await Task.detached(priority: .userInitiated) {
                 Self.finalize(parts, preferredDirectory: preferred)
             }.value
-            for output in outputs { fileQueue.enqueueCall(output) }
+            let info = CallInfo(bundleID: app.bundleID, appName: app.name, startedAt: startedAt,
+                                duration: duration, partCount: parts.count)
+            // Registered before queueing, so the History row exists as soon as
+            // the file does — transcription only fills the transcript in.
+            for output in outputs {
+                callIndex.record(info, for: output)
+                fileQueue.enqueueCall(output)
+            }
+            Self.removeSidecar(of: parts)
             finishIdle()
         }
     }
@@ -134,11 +145,16 @@ final class CallRecorder: ObservableObject {
         // Unique, because names go down to the minute: a recording started
         // right after a crash must not land on the parts that
         // `recoverInterruptedRecordings` is still merging.
-        let base = Self.uniqueBase(in: Self.recordingsDirectory, base: Self.baseName(for: app, at: Date()))
+        let startedAt = Date()
+        let base = Self.uniqueBase(in: Self.recordingsDirectory, base: Self.baseName(for: app, at: startedAt))
         do {
             let writer = try CallTimelineWriter(directory: Self.recordingsDirectory, base: base,
                                                 chunkDuration: CallSettings.chunkDuration)
             self.writer = writer
+            // Written now, not on Stop: this is what tells the next launch which
+            // app a crashed call belonged to.
+            CallInfo(bundleID: app.bundleID, appName: app.name, startedAt: startedAt)
+                .write(to: CallRecordingParts.sidecarURL(in: Self.recordingsDirectory, base: base))
 
             let mic = MicSource()
             let remote: CallAudioSource
@@ -185,7 +201,7 @@ final class CallRecorder: ObservableObject {
         }
 
         UserDefaults.standard.set(app.bundleID, forKey: Self.lastAppKey)
-        state = .recording(app, since: Date())
+        state = .recording(app, since: startedAt)
         flog("CallRecorder: recording \(app.bundleID) into \(base), parts of \(CallSettings.chunkDuration)s")
         observeTermination(of: app)
         levelTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
@@ -386,6 +402,14 @@ final class CallRecorder: ObservableObject {
         }
     }
 
+    /// Drops the side-car of a recording whose parts have been dealt with.
+    nonisolated static func removeSidecar(of parts: [URL]) {
+        guard let first = parts.first else { return }
+        let base = CallRecordingParts.base(of: first)
+        try? FileManager.default.removeItem(
+            at: CallRecordingParts.sidecarURL(in: first.deletingLastPathComponent(), base: base))
+    }
+
     /// A base name whose first part file does not exist yet.
     nonisolated static func uniqueBase(in directory: URL, base: String) -> String {
         var candidate = base
@@ -421,18 +445,30 @@ final class CallRecorder: ObservableObject {
         Task {
             for recording in recordings {
                 let parts = recording.parts
-                let outputs = await Task.detached(priority: .utility) { () -> [URL] in
+                let sidecar = CallRecordingParts.sidecarURL(in: Self.recordingsDirectory, base: recording.base)
+                let saved = CallInfo.read(sidecar)
+                let merged = await Task.detached(priority: .utility) { () -> (outputs: [URL], seconds: TimeInterval) in
                     let frames = parts.reduce(AVAudioFramePosition(0)) { total, part in
                         total + ((try? AVAudioFile(forReading: part))?.length ?? 0)
                     }
-                    guard Double(frames) >= CallTimelineWriter.sampleRate * Self.minimumDuration else {
+                    let seconds = Double(frames) / CallTimelineWriter.sampleRate
+                    guard seconds >= Self.minimumDuration else {
                         for part in parts { try? FileManager.default.removeItem(at: part) }
-                        return []
+                        return ([], seconds)
                     }
-                    return Self.finalize(parts, preferredDirectory: preferred)
+                    return (Self.finalize(parts, preferredDirectory: preferred), seconds)
                 }.value
-                flog("CallRecorder: recovered \(recording.base) (\(parts.count) part(s)) as \(outputs.map(\.lastPathComponent))")
-                for output in outputs { fileQueue.enqueueCall(output) }
+                flog("CallRecorder: recovered \(recording.base) (\(parts.count) part(s)) as \(merged.outputs.map(\.lastPathComponent))")
+                for output in merged.outputs {
+                    if let saved {
+                        callIndex.record(CallInfo(bundleID: saved.bundleID, appName: saved.appName,
+                                                  startedAt: saved.startedAt, duration: merged.seconds,
+                                                  partCount: parts.count, recoveredAfterCrash: true),
+                                         for: output)
+                    }
+                    fileQueue.enqueueCall(output)
+                }
+                try? FileManager.default.removeItem(at: sidecar)
             }
         }
     }

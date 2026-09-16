@@ -37,6 +37,11 @@ struct TranscriptionOptions {
     var prompt: String?
     /// Collect per-word timestamps, which attributing words to speakers needs.
     var wordTimestamps = false
+    /// Which model to run. `nil` is the app's active model; any other id is
+    /// loaded for this run alone and the active model is left where it is —
+    /// History re-transcribes a file with a model of its own choosing while
+    /// dictation keeps using the active one.
+    var modelID: String?
 
     static let plain = TranscriptionOptions()
 }
@@ -58,6 +63,9 @@ class TranscriptionEngine: ObservableObject {
     private var keepAliveTimer: DispatchSourceTimer?
     /// Interval between keep-alive pings that prevent macOS from paging model out of RAM
     private let keepAliveInterval: TimeInterval = 120 // 2 minutes
+    /// How many times one chunk may be redone after a model swap before the run
+    /// is called off. Guards against two jobs trading the model forever.
+    private static let maxChunkRetries = 5
 
     /// Bumped every time the whisper context is freed. Replaces the old
     /// `shouldAbort` bool, which `unloadModel()` reset to `false` on its way
@@ -123,7 +131,12 @@ class TranscriptionEngine: ObservableObject {
             engineLogger.error("no active model")
             throw TranscriptionError.noModel
         }
+        try loadModel(model)
+    }
 
+    /// Load one specific model. The override path must not read `activeModel`:
+    /// a job with a model of its own runs while the active model stays put.
+    private func loadModel(_ model: WhisperModel) throws {
         let path = modelManager.modelPath(for: model).path
         engineLogger.info("loading model: \(model.name) from: \(path)")
         engineLogger.info("file exists: \(FileManager.default.fileExists(atPath: path))")
@@ -265,9 +278,10 @@ class TranscriptionEngine: ObservableObject {
                 // takes `whisperLock`, and blocking a cooperative-pool thread
                 // on a lock held for a whole 25-second chunk is exactly what
                 // that pool must never do.
-                let myGeneration: Int
+                var myGeneration: Int
+                self.setUnloadRequested(false)
                 do {
-                    myGeneration = try self.prepareContext()
+                    myGeneration = try self.prepareContext(modelID: options.modelID)
                 } catch {
                     continuation.resume(throwing: error)
                     return
@@ -307,7 +321,7 @@ class TranscriptionEngine: ObservableObject {
                 DispatchQueue.main.async { self.chunkProgress = ChunkProgress(current: 0, total: chunks.count) }
                 onProgress?(0, chunks.count)
 
-                let abortToken = AbortToken(engine: self, generation: myGeneration,
+                var abortToken = AbortToken(engine: self, generation: myGeneration,
                                             shouldCancel: shouldCancel)
 
                 var fullText = ""
@@ -315,11 +329,20 @@ class TranscriptionEngine: ObservableObject {
                 var detectedLang = ""
                 var cancelled = false
 
-                for (idx, chunk) in chunks.enumerated() {
+                // Indexed rather than `for in`: a chunk interrupted by a model
+                // swap is retried on the reloaded context. Breaking out instead
+                // would return half a transcript as a success.
+                var idx = 0
+                var retries = 0
+                var failure: Error?
+                while idx < chunks.count {
+                    let chunk = chunks[idx]
+
                     // Step aside for the live dictation flow rather than
-                    // interleaving chunk-for-chunk with it.
-                    while shouldYield?() == true, shouldCancel?() != true,
-                          self.currentGeneration() == myGeneration {
+                    // interleaving chunk-for-chunk with it. Parked for the
+                    // whole dictation, so a job running its own model does not
+                    // fight dictation over which model is resident.
+                    while shouldYield?() == true, shouldCancel?() != true, !self.isUnloadRequested() {
                         Thread.sleep(forTimeInterval: 0.1)
                     }
 
@@ -329,9 +352,32 @@ class TranscriptionEngine: ObservableObject {
                         break
                     }
 
-                    guard self.currentGeneration() == myGeneration else {
-                        flog("transcription aborted at chunk \(idx): model generation changed")
+                    if self.isUnloadRequested() {
+                        flog("transcription stopped at chunk \(idx): model unloaded")
+                        cancelled = true
                         break
+                    }
+
+                    // Someone swapped the model: dictation loads the active
+                    // one, another job may load its own. Take the context back
+                    // and redo this chunk.
+                    if self.currentGeneration() != myGeneration {
+                        guard retries < Self.maxChunkRetries else {
+                            flog("transcription gave up on chunk \(idx): the model kept changing")
+                            failure = TranscriptionError.transcriptionFailed
+                            break
+                        }
+                        retries += 1
+                        do {
+                            myGeneration = try self.prepareContext(modelID: options.modelID)
+                            abortToken = AbortToken(engine: self, generation: myGeneration,
+                                                    shouldCancel: shouldCancel)
+                            flog("chunk \(idx + 1): context re-acquired after a model swap")
+                        } catch {
+                            failure = error
+                            break
+                        }
+                        continue
                     }
 
                     DispatchQueue.main.async { self.chunkProgress = ChunkProgress(current: idx + 1, total: chunks.count) }
@@ -369,8 +415,8 @@ class TranscriptionEngine: ObservableObject {
                     // swapped out from under us and the old pointer freed.
                     guard let ctx = self.whisperContext, self.currentGeneration() == myGeneration else {
                         self.whisperLock.unlock()
-                        flog("transcription aborted at chunk \(idx): context released")
-                        break
+                        flog("chunk \(idx + 1): context released under us, retrying")
+                        continue
                     }
 
                     let result = withExtendedLifetime(abortToken) {
@@ -388,7 +434,14 @@ class TranscriptionEngine: ObservableObject {
 
                     if result != 0 {
                         self.whisperLock.unlock()
+                        if self.currentGeneration() != myGeneration || self.isUnloadRequested() {
+                            // Aborted through the callback, not a decode failure.
+                            flog("chunk \(idx + 1): aborted, retrying on a fresh context")
+                            continue
+                        }
                         flog("whisper_full failed on chunk \(idx)")
+                        idx += 1
+                        retries = 0
                         continue
                     }
 
@@ -413,9 +466,16 @@ class TranscriptionEngine: ObservableObject {
                     }
                     self.whisperLock.unlock()
                     flog("chunk \(idx+1) done, total text length: \(fullText.count)")
+                    idx += 1
+                    retries = 0
                 }
 
                 DispatchQueue.main.async { self.chunkProgress = .none }
+
+                if let failure {
+                    continuation.resume(throwing: failure)
+                    return
+                }
 
                 if cancelled {
                     continuation.resume(throwing: CancellationError())
@@ -596,6 +656,7 @@ class TranscriptionEngine: ObservableObject {
 
     func unloadModel() {
         stopKeepAlive()
+        setUnloadRequested(true)
         // Bump before taking the lock: an in-flight whisper_full polls the
         // generation through abort_callback, unwinds, and hands us the lock.
         bumpGeneration()
@@ -610,19 +671,43 @@ class TranscriptionEngine: ObservableObject {
     /// All of it under the lock: unlocked, two callers could both decide the
     /// model needed swapping and the loser would free the context the winner
     /// was already running on.
-    private func prepareContext() throws -> Int {
+    /// - Parameter modelID: `nil` for the active model; otherwise that model,
+    ///   which must be downloaded.
+    private func prepareContext(modelID: String? = nil) throws -> Int {
         whisperLock.lock()
         defer { whisperLock.unlock() }
 
-        let currentId = modelManager.activeModel?.id
-        if whisperContext == nil || loadedModelId != currentId {
-            engineLogger.info("need to load/reload model (ctx=\(self.whisperContext == nil ? "nil" : "set"), loaded=\(self.loadedModelId ?? "nil"), current=\(currentId ?? "nil"))")
+        let wanted: WhisperModel?
+        if let modelID {
+            wanted = modelManager.models.first { $0.id == modelID && $0.isDownloaded }
+        } else {
+            wanted = modelManager.activeModel
+        }
+        guard let model = wanted else { throw TranscriptionError.noModel }
+        if whisperContext == nil || loadedModelId != model.id {
+            engineLogger.info("need to load/reload model (ctx=\(self.whisperContext == nil ? "nil" : "set"), loaded=\(self.loadedModelId ?? "nil"), wanted=\(model.id))")
             bumpGeneration()
             freeContextLocked()
-            try loadModel()
+            try loadModel(model)
         }
         guard whisperContext != nil else { throw TranscriptionError.noModel }
         return currentGeneration()
+    }
+
+    /// Set while the model is torn down for good (quit, iOS background). A run
+    /// treats it as a stop; a mere model swap only makes the run reload.
+    private var unloadRequested = false
+
+    private func setUnloadRequested(_ requested: Bool) {
+        generationLock.lock()
+        unloadRequested = requested
+        generationLock.unlock()
+    }
+
+    private func isUnloadRequested() -> Bool {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        return unloadRequested
     }
 
     private func currentGeneration() -> Int {

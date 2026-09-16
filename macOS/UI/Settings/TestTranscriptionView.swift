@@ -9,7 +9,6 @@ struct TestTranscriptionView: View {
     @EnvironmentObject var transcriptionEngine: TranscriptionEngine
     @EnvironmentObject var fileQueue: FileTranscriptionQueue
     @EnvironmentObject var diarizationModels: DiarizationModelStore
-    @EnvironmentObject var registry: TranscriptRegistry
     @EnvironmentObject var vocabularies: VocabularyStore
 
     @State private var isEditingVocabularies = false
@@ -43,10 +42,6 @@ struct TestTranscriptionView: View {
                     queueSection
                 }
 
-                if !registry.records.isEmpty {
-                    Divider()
-                    historySection
-                }
 
                 if let error = errorMessage {
                     Text(error)
@@ -60,7 +55,6 @@ struct TestTranscriptionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             diarizationModels.refresh()
-            registry.refreshSourceStates()
         }
         // The whole pane is the drop target, not a separate well.
         .contentShape(Rectangle())
@@ -380,35 +374,6 @@ struct TestTranscriptionView: View {
         }
     }
 
-    // MARK: - Transcribed files
-
-    private var historySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("test.history.title".localized)
-                    .font(.headline)
-                Spacer()
-                Button("test.history.clear".localized) { registry.removeAll() }
-                    .modifier(BorderedButtonCompat())
-                    .controlSize(.small)
-            }
-
-            LazyVStack(alignment: .leading, spacing: 4) {
-                ForEach(registry.records) { record in
-                    RecordRow(record: record,
-                              plainState: registry.state(of: record, .plain),
-                              rolesState: registry.state(of: record, .roles),
-                              isQueued: fileQueue.jobs.contains {
-                                  !$0.status.isFinished && $0.url.standardizedFileURL.path == record.sourcePath
-                              },
-                              onReveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) },
-                              onRerun: { fileQueue.rerun(record.sourceURL) },
-                              onRemove: { registry.remove(record) })
-                }
-            }
-        }
-    }
-
     private func reveal(_ job: FileTranscriptionQueue.Job) {
         guard let url = job.outputURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -647,86 +612,6 @@ private struct JobRow: View {
 }
 
 // MARK: - Transcribed file row
-
-private struct RecordRow: View {
-    let record: TranscriptRegistry.Record
-    let plainState: TranscriptRegistry.SourceState?
-    let rolesState: TranscriptRegistry.SourceState?
-    let isQueued: Bool
-    let onReveal: (URL) -> Void
-    let onRerun: () -> Void
-    let onRemove: () -> Void
-
-    private var isMissing: Bool { plainState == .missing || rolesState == .missing }
-    private var isChanged: Bool { plainState == .changed || rolesState == .changed }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: isMissing ? "questionmark.circle" : isChanged ? "exclamationmark.triangle.fill" : "doc.text")
-                .foregroundColor(isChanged ? .orange : .secondary)
-                .frame(width: 14)
-
-            Text(record.sourceURL.lastPathComponent)
-                .font(.caption)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(minWidth: 90, alignment: .leading)
-                .layoutPriority(1)
-                .help(record.sourcePath)
-
-            if let plain = record.plain {
-                badge("test.history.badge.plain".localized, plain, plainState)
-            }
-            if let roles = record.roles {
-                badge("test.history.badge.roles".localized, roles, rolesState)
-            }
-
-            if isMissing {
-                Text("test.history.missing".localized)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            } else if isChanged {
-                Text("test.history.changed".localized)
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-
-            Button(action: onRerun) {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.plain)
-            .disabled(isMissing || isQueued)
-            .help("test.history.rerun".localized)
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.plain)
-            .help("test.history.remove".localized)
-        }
-        .padding(.vertical, 2)
-        .padding(.horizontal, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.orange.opacity(isChanged ? 0.15 : 0))
-        )
-    }
-
-    /// Opens the transcript in Finder; orange when the audio changed after it
-    /// was made.
-    private func badge(_ title: String, _ variant: TranscriptRegistry.Variant,
-                       _ state: TranscriptRegistry.SourceState?) -> some View {
-        Button { onReveal(variant.outputURL) } label: {
-            ModeBadge(title: title, highlighted: state == .changed)
-        }
-        .buttonStyle(.plain)
-        .help(variant.outputURL.lastPathComponent)
-    }
-}
 
 private struct ModeBadge: View {
     let title: String

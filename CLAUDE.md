@@ -117,6 +117,33 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
 - Tap permission ("System Audio Recording", `NSAudioCaptureUsageDescription`) has no preflight: a
   denied tap delivers silence, surfaced as a warning. Spike app: `CallSpike` (scratch, not in repo).
 
+### Settings window and History (macOS)
+
+- Sidebar: **Transcription, Models, History, Settings** (`SettingsTab`). Everything that used to be a
+  tab of its own — general, language, indicator, layout, cleanup, permissions — is a section of
+  `ConsolidatedSettingsView`, reusing the same pane structs (their root `Form` is a `VStack` now).
+  The window is resizable (900×600, min 720×460, frame autosaved); the sidebar keeps a fixed width
+  and the detail pane stays `.clipped()`, and every picker is capped at 360 pt — a wide picker used
+  to shove the sidebar sideways.
+- **History tab** (`HistoryFilesView`) lists everything with an audio file: calls and transcribed
+  files (`HistoryEntry.merge` over `TranscriptRegistry` + `CallIndex`). The card shows the app a
+  call came from, "Save as…" (a copy) and "Show in Finder" for the audio and each transcript, and
+  re-transcribes with a model picker. Dictation texts keep their own menubar window
+  ("Dictation history…"); "Recordings and Calls…" opens this tab.
+- **Per-job model**: `TranscriptionOptions.modelID` (nil = active model) is loaded for that run only,
+  so re-transcribing never moves the model fn dictation uses. A model chosen but not downloaded is
+  offered for download first, and only an explicit yes starts it. Because two runs can now want
+  different models, the chunk loop **re-acquires the context** on a generation change instead of
+  returning a partial transcript as success.
+- **`CallIndex`** (`calls.json`) remembers which app each call came from: the file name is localized
+  and unparseable, and a registry row only appears once a transcript exists. A `<base>.call.json`
+  side-car is written next to the parts, so the app survives `kill -9`.
+- **Cleanup** (`CleanupService`, `CleanupPlan`): three independent periods — call audio, transcript
+  files, dictation history — all `never` by default, first run 8 s after launch then every 6 h, at
+  most once per 12 h. Only files Corvin created are candidates (calls it recorded, transcripts it
+  wrote); the user's own audio and anything else in the output folder is never touched, and every
+  deletion is logged. `autoCleanupPeriod` keeps its name because iOS reads it through the app group.
+
 ### Directory Structure
 
 ```

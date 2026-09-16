@@ -473,3 +473,43 @@
 "test.call.title" = "Grabación de llamadas";
 "test.call.chunk.label" = "Grabar en partes de, min:";
 "test.call.chunk.hint" = "Cada parte se cierra al completarse, así que un fallo cuesta como máximo la parte en curso; al terminar la llamada las partes se unen en un archivo.";
+"history.error.modelMissing" = "El modelo elegido para este archivo ya no está descargado.";
+
+/* History tab */
+"history.files.empty" = "Aún no hay grabaciones ni archivos transcritos";
+"history.files.callFrom" = "Llamada desde %@";
+"history.files.source" = "Fuente";
+"history.files.file" = "Archivo";
+"history.files.recorded" = "Grabado";
+"history.files.duration" = "Duración";
+"history.files.recovered" = "Unido en el siguiente inicio tras una interrupción";
+"history.files.audio" = "Grabación";
+"history.files.transcripts" = "Transcripciones";
+"history.files.noTranscripts" = "Aún sin transcribir";
+"history.files.transcriptMissing" = "El archivo de transcripción se movió o se eliminó";
+"history.files.model" = "Modelo";
+"history.files.dictionary" = "Diccionario";
+"history.files.saveAs" = "Guardar como…";
+"history.files.reveal" = "Mostrar en Finder";
+"history.files.retranscribe" = "Transcribir de nuevo";
+"history.files.queued" = "Ya está en la cola";
+"history.files.mode.call" = "Roles según los dos canales de la llamada";
+"history.files.mode.roles" = "Modo diálogo: un párrafo por hablante";
+"history.files.mode.plain" = "Texto simple";
+"history.files.model.notDownloaded" = "El modelo %@ no está descargado (%@). ¿Descargarlo y transcribir?";
+"history.files.model.download" = "Descargar y transcribir";
+"history.files.model.downloading" = "Descargando %@…";
+"history.files.badge.call" = "LLAMADA";
+"settings.tab.settings" = "Ajustes";
+"menu.recordings" = "Grabaciones y llamadas…";
+
+/* Cleanup */
+"settings.cleanup.callAudio" = "Eliminar grabaciones de llamadas anteriores a";
+"settings.cleanup.transcripts" = "Eliminar archivos de transcripción anteriores a";
+"settings.cleanup.dictation" = "Eliminar el historial de dictado anterior a";
+"settings.cleanup.hint" = "Solo se eliminan los archivos creados por Corvin; cada eliminación queda en el registro.";
+"settings.cleanup.runNow" = "Limpiar ahora";
+"settings.cleanup.summary" = "%@: %d archivo(s) eliminados, %@ liberados";
+"settings.cleanup.confirm.title" = "¿Eliminar archivos antiguos automáticamente?";
+"settings.cleanup.confirm.message" = "Corvin los eliminará de forma permanente, sin pasar por la Papelera.";
+"settings.cleanup.confirm.enable" = "Activar";

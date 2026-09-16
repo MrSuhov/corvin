@@ -177,6 +177,12 @@ enum CallRecordingParts {
         return index
     }
 
+    /// Where `CallInfo` for this recording is kept while it is being made.
+    /// A `.json` extension, so it never looks like a part.
+    static func sidecarURL(in directory: URL, base: String) -> URL {
+        directory.appendingPathComponent("\(base).call.json")
+    }
+
     /// A directory listing as recordings, each with its parts in order.
     static func group(_ urls: [URL]) -> [(base: String, parts: [URL])] {
         var grouped: [String: [URL]] = [:]

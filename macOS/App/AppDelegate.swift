@@ -16,7 +16,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var transcriptRegistry: TranscriptRegistry!
     private var vocabularyStore: VocabularyStore!
     private var dictationCoordinator: DictationCoordinator!
+    private(set) var callIndex: CallIndex!
     private(set) var callRecorder: CallRecorder!
+    private(set) var cleanupService: CleanupService!
 
     private var statusBarController: StatusBarController!
     private var floatingIndicator: FloatingIndicatorController!
@@ -57,7 +59,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "layoutSwitchChangesInputSource": true,
             "layoutSwitchKeyCode": ModifierKey.option.canonicalKeyCode,
         ].merging(DictationSettings.defaults) { current, _ in current }
-            .merging(CallSettings.defaults) { current, _ in current })
+            .merging(CallSettings.defaults) { current, _ in current }
+            .merging(CleanupSettings.defaults) { current, _ in current })
 
         accessibilityService = AccessibilityService()
         layoutSwitchService = LayoutSwitchService(accessibility: accessibilityService)
@@ -75,7 +78,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                                           diarizationModels: diarizationModels,
                                           registry: transcriptRegistry,
                                           vocabularies: vocabularyStore)
-        callRecorder = CallRecorder(fileQueue: fileQueue)
+        callIndex = CallIndex()
+        // Calls whose audio the user deleted by hand are not worth remembering,
+        // unless a transcript still points at them.
+        callIndex.prune(keeping: Set(transcriptRegistry.records.map { $0.sourcePath }))
+        callRecorder = CallRecorder(fileQueue: fileQueue, callIndex: callIndex)
+        cleanupService = CleanupService(registry: transcriptRegistry, callIndex: callIndex,
+                                        historyStore: historyStore, fileQueue: fileQueue)
+        cleanupService.start()
         hotkeyService = HotkeyService()
         dictationCoordinator = DictationCoordinator(
             sessionManager: sessionManager,
@@ -242,7 +252,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         activateAndShow(window)
     }
 
-    func showSettingsWindow(tab: SettingsTab = .general) {
+    func showSettingsWindow(tab: SettingsTab = .settings) {
         if let w = settingsWindow {
             settingsTabSelection.tab = tab
             activateAndShow(w)
@@ -258,16 +268,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .environmentObject(fileQueue as FileTranscriptionQueue)
             .environmentObject(diarizationModels as DiarizationModelStore)
             .environmentObject(transcriptRegistry as TranscriptRegistry)
+            .environmentObject(callIndex as CallIndex)
+            .environmentObject(cleanupService as CleanupService)
             .environmentObject(vocabularyStore as VocabularyStore)
 
         let window = NSWindow(
-            // Match SettingsView's fixed SwiftUI frame exactly so NSHostingView
-            // never resizes (and thus re-centers) the window when switching tabs.
             contentRect: NSRect(x: 0, y: 0, width: SettingsView.windowWidth, height: SettingsView.windowHeight),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
+        window.contentMinSize = NSSize(width: SettingsView.minWindowWidth,
+                                       height: SettingsView.minWindowHeight)
         window.title = "window.settings".localized
         window.titleVisibility = .visible
         window.toolbarStyle = .unifiedCompact
@@ -279,7 +291,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             hostingView.sizingOptions = []
         }
         window.contentView = hostingView
-        window.center()
+        // Remembers where the user put it and how big they made it; centre only
+        // the very first time.
+        window.setFrameAutosaveName("CorvinSettingsWindow")
+        if window.frame.origin == .zero { window.center() }
 
         self.settingsWindow = window
         activateAndShow(window)

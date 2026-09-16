@@ -30,6 +30,9 @@ final class TranscriptRegistry: ObservableObject {
         let sourceModified: Date
         let dictionaryName: String?
         let date: Date
+        /// Which model made this transcript, for the History card. Absent in
+        /// files written before it was recorded.
+        var modelID: String?
         /// The roles slot also holds call transcripts; this is what tells
         /// "transcribe again" to read the channels again instead of mixing
         /// them down. Absent in files written before call recording existed.
@@ -111,13 +114,14 @@ final class TranscriptRegistry: ObservableObject {
         return record.roles?.isCall == true ? .call : nil
     }
 
-    func add(source: URL, mode: TranscriptMode, output: URL, stamp: SourceStamp, dictionaryName: String?) {
+    func add(source: URL, mode: TranscriptMode, output: URL, stamp: SourceStamp,
+             dictionaryName: String?, modelID: String? = nil) {
         let path = source.standardizedFileURL.path
         var record = records.first { $0.sourcePath == path }
             ?? Record(sourcePath: path, plain: nil, roles: nil, updatedAt: Date())
         record[mode] = Variant(outputPath: output.path, sourceSize: stamp.size,
                                sourceModified: stamp.modified, dictionaryName: dictionaryName, date: Date(),
-                               isCall: mode == .call)
+                               modelID: modelID, isCall: mode == .call)
         record.updatedAt = Date()
         records.removeAll { $0.sourcePath == path }
         records.insert(record, at: 0)
@@ -130,6 +134,28 @@ final class TranscriptRegistry: ObservableObject {
         records.removeAll { $0.sourcePath == record.sourcePath }
         states[record.sourcePath] = nil
         persist()
+    }
+
+    /// Drop transcripts whose files are gone, and records left with none.
+    /// Cleanup deletes the files; this is how the list stops offering them.
+    func forgetMissingTranscripts() {
+        var changed = false
+        for index in records.indices.reversed() {
+            for mode in [TranscriptMode.plain, .roles] {
+                guard let variant = records[index][mode] else { continue }
+                if !FileManager.default.fileExists(atPath: variant.outputPath) {
+                    records[index][mode] = nil
+                    changed = true
+                }
+            }
+            if records[index].plain == nil, records[index].roles == nil {
+                records.remove(at: index)
+                changed = true
+            }
+        }
+        guard changed else { return }
+        persist()
+        refreshSourceStates()
     }
 
     func removeAll() {

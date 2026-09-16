@@ -473,3 +473,43 @@
 "test.call.title" = "Call recording";
 "test.call.chunk.label" = "Record in parts of, min:";
 "test.call.chunk.hint" = "Each part is closed as it completes, so a crash costs at most the part in flight; the parts are merged into one file when the call ends.";
+"history.error.modelMissing" = "The model chosen for this file is no longer downloaded.";
+
+/* History tab */
+"history.files.empty" = "No recordings or transcribed files yet";
+"history.files.callFrom" = "Call from %@";
+"history.files.source" = "Source";
+"history.files.file" = "File";
+"history.files.recorded" = "Recorded";
+"history.files.duration" = "Duration";
+"history.files.recovered" = "Merged at the next launch after an interruption";
+"history.files.audio" = "Audio";
+"history.files.transcripts" = "Transcripts";
+"history.files.noTranscripts" = "Not transcribed yet";
+"history.files.transcriptMissing" = "The transcript file was moved or deleted";
+"history.files.model" = "Model";
+"history.files.dictionary" = "Dictionary";
+"history.files.saveAs" = "Save as…";
+"history.files.reveal" = "Show in Finder";
+"history.files.retranscribe" = "Transcribe again";
+"history.files.queued" = "Already in the queue";
+"history.files.mode.call" = "Roles from the call's two channels";
+"history.files.mode.roles" = "Dialog mode: a paragraph per speaker";
+"history.files.mode.plain" = "Plain text";
+"history.files.model.notDownloaded" = "%@ is not downloaded (%@). Download it and transcribe?";
+"history.files.model.download" = "Download and transcribe";
+"history.files.model.downloading" = "Downloading %@…";
+"history.files.badge.call" = "CALL";
+"settings.tab.settings" = "Settings";
+"menu.recordings" = "Recordings and Calls…";
+
+/* Cleanup */
+"settings.cleanup.callAudio" = "Delete call recordings older than";
+"settings.cleanup.transcripts" = "Delete transcript files older than";
+"settings.cleanup.dictation" = "Delete dictation history older than";
+"settings.cleanup.hint" = "Only files Corvin created are deleted, and every deletion goes to the log.";
+"settings.cleanup.runNow" = "Clean up now";
+"settings.cleanup.summary" = "%@ — %d file(s) deleted, %@ freed";
+"settings.cleanup.confirm.title" = "Delete old files automatically?";
+"settings.cleanup.confirm.message" = "Corvin will delete them permanently, without the Trash.";
+"settings.cleanup.confirm.enable" = "Turn on";

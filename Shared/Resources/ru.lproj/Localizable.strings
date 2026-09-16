@@ -473,3 +473,43 @@
 "test.call.title" = "Запись звонков";
 "test.call.chunk.label" = "Писать частями по, мин:";
 "test.call.chunk.hint" = "Каждая часть сразу закрывается на диске, поэтому сбой стоит не больше одной части; после звонка части сливаются в один файл.";
+"history.error.modelMissing" = "Модель, выбранная для этого файла, больше не скачана.";
+
+/* History tab */
+"history.files.empty" = "Пока нет записей и распознанных файлов";
+"history.files.callFrom" = "Звонок из %@";
+"history.files.source" = "Источник";
+"history.files.file" = "Файл";
+"history.files.recorded" = "Записан";
+"history.files.duration" = "Длительность";
+"history.files.recovered" = "Склеен при следующем запуске после сбоя";
+"history.files.audio" = "Аудиозапись";
+"history.files.transcripts" = "Расшифровки";
+"history.files.noTranscripts" = "Ещё не распознано";
+"history.files.transcriptMissing" = "Файл расшифровки перемещён или удалён";
+"history.files.model" = "Модель";
+"history.files.dictionary" = "Словарь";
+"history.files.saveAs" = "Сохранить как…";
+"history.files.reveal" = "Показать в Finder";
+"history.files.retranscribe" = "Распознать заново";
+"history.files.queued" = "Уже в очереди";
+"history.files.mode.call" = "Роли по двум каналам звонка";
+"history.files.mode.roles" = "Режим диалогов: реплика каждого отдельным абзацем";
+"history.files.mode.plain" = "Обычный текст";
+"history.files.model.notDownloaded" = "Модель %@ не скачана (%@). Скачать и распознать?";
+"history.files.model.download" = "Скачать и распознать";
+"history.files.model.downloading" = "Скачивание %@…";
+"history.files.badge.call" = "ЗВОНОК";
+"settings.tab.settings" = "Настройки";
+"menu.recordings" = "Записи и звонки…";
+
+/* Cleanup */
+"settings.cleanup.callAudio" = "Удалять аудиозаписи звонков старше";
+"settings.cleanup.transcripts" = "Удалять файлы расшифровок старше";
+"settings.cleanup.dictation" = "Удалять историю диктовок старше";
+"settings.cleanup.hint" = "Удаляются только файлы, созданные Corvin; каждое удаление попадает в лог.";
+"settings.cleanup.runNow" = "Очистить сейчас";
+"settings.cleanup.summary" = "%@ — удалено файлов: %d, освобождено %@";
+"settings.cleanup.confirm.title" = "Удалять старые файлы автоматически?";
+"settings.cleanup.confirm.message" = "Corvin будет удалять их безвозвратно, минуя Корзину.";
+"settings.cleanup.confirm.enable" = "Включить";

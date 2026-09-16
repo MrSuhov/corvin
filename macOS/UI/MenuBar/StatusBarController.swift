@@ -232,6 +232,13 @@ final class StatusBarController: NSObject {
         let historyItem = NSMenuItem(title: "menu.showHistory".localized, action: #selector(showHistory), keyEquivalent: "")
         historyItem.target = self
         menu.addItem(historyItem)
+
+        // Calls and transcribed files live in the settings window; dictation
+        // texts keep their own window above.
+        let recordingsItem = NSMenuItem(title: "menu.recordings".localized,
+                                        action: #selector(showSettingsHistory), keyEquivalent: "")
+        recordingsItem.target = self
+        menu.addItem(recordingsItem)
         menu.addItem(NSMenuItem.separator())
 
         // Model info
@@ -396,6 +403,10 @@ final class StatusBarController: NSObject {
 
     @objc private func showSettingsModels() {
         appDelegate?.showSettingsWindow(tab: .models)
+    }
+
+    @objc private func showSettingsHistory() {
+        appDelegate?.showSettingsWindow(tab: .history)
     }
 
     @objc private func showSettingsTranscription() {

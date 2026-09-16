@@ -2,60 +2,51 @@ import SwiftUI
 import ApplicationServices
 import UniformTypeIdentifiers
 
+/// The sidebar. Everything that used to be a tab of its own — general,
+/// language, indicator, layout, cleanup, permissions — is a section of
+/// `.settings` now; only the three places with real work in them stay.
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, models, layout, indicator, history, language, pro, permissions, transcription
+    case transcription, models, history, settings
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .general: return "settings.tab.general".localized
-        case .models: return "settings.tab.models".localized
-        case .layout: return "settings.tab.layout".localized
-        case .indicator: return "settings.tab.indicator".localized
-        case .history: return "settings.tab.history".localized
-        case .language: return "settings.tab.language".localized
-        case .pro: return "settings.pro.title".localized
-        case .permissions: return "settings.tab.permissions".localized
         case .transcription: return "settings.tab.transcription".localized
+        case .models: return "settings.tab.models".localized
+        case .history: return "settings.tab.history".localized
+        case .settings: return "settings.tab.settings".localized
         }
     }
 
     var icon: String {
         switch self {
-        case .general: return "gear"
-        case .models: return "cpu"
-        case .layout: return "keyboard"
-        case .indicator: return "bubble.left"
-        case .history: return "clock"
-        case .language: return "globe"
-        case .pro: return "star.fill"
-        case .permissions: return "lock.shield"
         case .transcription: return "mic.badge.plus"
+        case .models: return "cpu"
+        case .history: return "clock"
+        case .settings: return "gear"
         }
     }
 }
 
 class SettingsTabSelection: ObservableObject {
-    @Published var tab: SettingsTab = .general
+    @Published var tab: SettingsTab = .settings
 }
 
 struct SettingsView: View {
     @ObservedObject var selection: SettingsTabSelection
     @ObservedObject private var localization = LocalizationManager.shared
 
-    // Window/layout geometry. The NSWindow content size in AppDelegate must match
-    // `windowWidth`/`windowHeight` so NSHostingView never resizes (and re-centers)
-    // the window when switching tabs.
-    static let windowWidth: CGFloat = 600
-    static let windowHeight: CGFloat = 400
-    static let sidebarWidth: CGFloat = 180
-
-    /// Hide the Pro tab unless the Pro experience is enabled. Flip
-    /// `AppFeatures.proEnabled` to restore it.
-    private var visibleTabs: [SettingsTab] {
-        SettingsTab.allCases.filter { $0 != .pro || AppFeatures.proEnabled }
-    }
+    // Window/layout geometry. `windowWidth`/`windowHeight` are the size the
+    // window opens at the first time; it is resizable, and AppDelegate pins its
+    // minimum to `minWindowWidth`/`minWindowHeight`.
+    static let windowWidth: CGFloat = 900
+    static let windowHeight: CGFloat = 600
+    static let sidebarWidth: CGFloat = 200
+    /// Below this the History card and the settings sections stop being
+    /// readable; AppDelegate pins the window to it.
+    static let minWindowWidth: CGFloat = 720
+    static let minWindowHeight: CGFloat = 460
 
     var body: some View {
         // Fixed sidebar layout: no NavigationSplitView, so AppKit does not inject
@@ -73,11 +64,15 @@ struct SettingsView: View {
 
             Divider()
 
+            // Still clipped: a control with a wide intrinsic size (the language
+            // picker, once) must not be able to push the HStack wider and shove
+            // the sidebar sideways.
             detailContent
-                .frame(width: Self.windowWidth - Self.sidebarWidth - 1, height: Self.windowHeight)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
         }
-        .frame(width: Self.windowWidth, height: Self.windowHeight)
+        .frame(minWidth: Self.minWindowWidth, maxWidth: .infinity,
+               minHeight: Self.minWindowHeight, maxHeight: .infinity)
         // Rebuild the whole subtree on language change so every `.localized`
         // call (including the enum-backed sidebar labels) re-evaluates against
         // the freshly-set bundle.
@@ -87,14 +82,14 @@ struct SettingsView: View {
     @ViewBuilder
     private var sidebar: some View {
         if #available(macOS 13.0, *) {
-            List(visibleTabs, id: \.self, selection: $selection.tab) { tab in
+            List(SettingsTab.allCases, id: \.self, selection: $selection.tab) { tab in
                 Label(tab.label, systemImage: tab.icon)
                     .tag(tab)
             }
             .listStyle(.sidebar)
         } else {
             VStack {
-                ForEach(visibleTabs) { tab in
+                ForEach(SettingsTab.allCases) { tab in
                     Button(action: { selection.tab = tab }) {
                         Label(tab.label, systemImage: tab.icon)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,22 +109,10 @@ struct SettingsView: View {
     private var detailContent: some View {
         Group {
             switch selection.tab {
-            case .general: GeneralSettingsView()
-            case .models: ModelSettingsView()
-            case .layout: LayoutSwitchSettingsView()
-            case .indicator: IndicatorSettingsView()
-            case .history: HistorySettingsView()
-            case .language: LanguageSettingsView()
-            case .pro:
-                // Defensive: if a `.pro` selection was persisted while the Pro
-                // experience is hidden, don't surface the Pro panel.
-                if AppFeatures.proEnabled {
-                    ProSettingsView()
-                } else {
-                    EmptyView()
-                }
-            case .permissions: PermissionsSettingsView()
             case .transcription: TestTranscriptionView()
+            case .models: ModelSettingsView()
+            case .history: HistoryFilesView()
+            case .settings: ConsolidatedSettingsView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -147,7 +130,7 @@ struct GeneralSettingsView: View {
     @State private var isRecordingHotkey = false
 
     var body: some View {
-        Form {
+        VStack(alignment: .leading, spacing: 10) {
             Toggle("settings.general.launchAtLogin".localized, isOn: $launchAtLogin)
 
             HStack {
@@ -312,7 +295,7 @@ struct LayoutSwitchSettingsView: View {
     }
 
     var body: some View {
-        Form {
+        VStack(alignment: .leading, spacing: 10) {
             Toggle("settings.layout.enabled".localized(with: keyName), isOn: $layoutSwitchEnabled)
 
             Text("settings.layout.hint".localized(with: keyName))
@@ -399,7 +382,7 @@ struct IndicatorSettingsView: View {
     @AppStorage("indicatorSize") private var indicatorSize = "normal"
 
     var body: some View {
-        Form {
+        VStack(alignment: .leading, spacing: 10) {
             Toggle("settings.indicator.show".localized, isOn: $indicatorEnabled)
 
             Picker("settings.indicator.position".localized, selection: $indicatorPosition) {
@@ -419,30 +402,95 @@ struct IndicatorSettingsView: View {
     }
 }
 
-// MARK: - History
+// MARK: - Cleanup
 
-struct HistorySettingsView: View {
-    @AppStorage("autoCleanupPeriod") private var autoCleanupPeriod = "month"
+/// Three periods, because the three things being deleted are nothing alike: an
+/// hour of call audio is ~20 MB, a transcript is a few kilobytes, and dictation
+/// history is rows in a database.
+struct CleanupSettingsView: View {
+    @AppStorage(CleanupSettings.callAudioKey) private var callAudioPeriod = CleanupPeriod.never.rawValue
+    @AppStorage(CleanupSettings.transcriptsKey) private var transcriptsPeriod = CleanupPeriod.never.rawValue
+    /// Registered as `never` as well. The picker used to default to `month`
+    /// while the registered default said `never` — the kind of mismatch that
+    /// deletes someone's history by surprise.
+    @AppStorage(CleanupSettings.dictationKey) private var dictationPeriod = CleanupPeriod.never.rawValue
     @EnvironmentObject var historyStore: HistoryStore
+    @EnvironmentObject var cleanup: CleanupService
 
     var body: some View {
-        Form {
-            Picker("settings.history.autoCleanup".localized, selection: $autoCleanupPeriod) {
-                Text("settings.history.period.week".localized).tag("week")
-                Text("settings.history.period.month".localized).tag("month")
-                Text("settings.history.period.halfYear".localized).tag("halfYear")
-                Text("settings.history.period.never".localized).tag("never")
+        VStack(alignment: .leading, spacing: 10) {
+            periodPicker("settings.cleanup.callAudio".localized, $callAudioPeriod)
+            periodPicker("settings.cleanup.transcripts".localized, $transcriptsPeriod)
+            periodPicker("settings.cleanup.dictation".localized, $dictationPeriod)
+
+            Text("settings.cleanup.hint".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button("settings.cleanup.runNow".localized) { cleanup.run(force: true) }
+                    .modifier(BorderedButtonCompat())
+                    .disabled(cleanup.isRunning)
+
+                Button("settings.history.clearAll".localized) { historyStore.deleteAll() }
+                    .modifier(BorderedButtonCompat())
+                    .foregroundColor(.red)
             }
 
-            Section {
-                Button("settings.history.clearAll".localized) {
-                    historyStore.deleteAll()
-                }
-                .foregroundColor(.red)
+            if let summary = cleanup.lastSummary, let lastRun = cleanup.lastRun {
+                Text("settings.cleanup.summary".localized(
+                    with: Self.dateFormatter.string(from: lastRun),
+                    summary.files,
+                    Self.byteFormatter.string(fromByteCount: summary.bytes)))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .padding()
     }
+
+    private func periodPicker(_ title: String, _ selection: Binding<String>) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(CleanupPeriod.allCases) { period in
+                Text(period.label).tag(period.rawValue)
+            }
+        }
+        // Capped width: an intrinsically wide picker in this window used to
+        // shove the sidebar sideways.
+        .frame(maxWidth: 360, alignment: .leading)
+        .onChange(of: selection.wrappedValue) { newValue in
+            confirmIfDestructive(newValue, selection)
+        }
+    }
+
+    /// Switching a period on starts deleting files for good, so ask once.
+    private func confirmIfDestructive(_ newValue: String, _ selection: Binding<String>) {
+        guard newValue != CleanupPeriod.never.rawValue else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "settings.cleanup.confirm.title".localized
+        alert.informativeText = "settings.cleanup.confirm.message".localized
+        alert.addButton(withTitle: "settings.cleanup.confirm.enable".localized)
+        alert.addButton(withTitle: "common.cancel".localized)
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() != .alertFirstButtonReturn {
+            selection.wrappedValue = CleanupPeriod.never.rawValue
+        }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private static let byteFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter
+    }()
 }
 
 // MARK: - Language
@@ -451,7 +499,7 @@ struct LanguageSettingsView: View {
     @ObservedObject var localization = LocalizationManager.shared
 
     var body: some View {
-        Form {
+        VStack(alignment: .leading, spacing: 10) {
             Picker("settings.language.appLanguage".localized, selection: $localization.currentLanguage) {
                 ForEach(AppLanguage.allCases) { lang in
                     Text(lang.displayName).tag(lang.rawValue)
@@ -578,13 +626,17 @@ struct PermissionsSettingsView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .onAppear {
-            checkPermissions()
-            startPolling()
-        }
+        .onAppear { checkPermissions() }
         .onDisappear {
             pollTimer?.invalidate()
             pollTimer = nil
+        }
+        // Returning from System Settings is when a permission actually changes,
+        // and it costs nothing to check then. The pane is now a section of an
+        // always-mounted tab, so a permanent 2-second timer would run for as
+        // long as the window is open.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            checkPermissions()
         }
     }
 
@@ -626,15 +678,18 @@ struct PermissionsSettingsView: View {
         hasScreenCapture = CGPreflightScreenCaptureAccess()
     }
 
-    private func startPolling() {
+    /// A short burst after asking for something, not a permanent timer: the
+    /// system dialog is answered within seconds or not at all.
+    private func startPolling(for duration: TimeInterval = 30) {
         pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+        let deadline = Date().addingTimeInterval(duration)
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             DispatchQueue.main.async {
                 let newAx = AXIsProcessTrusted()
                 let newMic = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
                 if newAx != hasAccessibility { hasAccessibility = newAx }
                 if newMic != hasMicrophone { hasMicrophone = newMic }
-                if newAx && newMic {
+                if (newAx && newMic) || Date() > deadline {
                     pollTimer?.invalidate()
                     pollTimer = nil
                 }
@@ -656,6 +711,7 @@ struct PermissionsSettingsView: View {
             let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
             AXIsProcessTrustedWithOptions(options)
         }
+        startPolling()
     }
 
     private func resetAllPermissions() {

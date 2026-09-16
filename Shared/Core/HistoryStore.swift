@@ -104,6 +104,23 @@ class HistoryStore: ObservableObject {
         saveAndFetch()
     }
 
+    /// Rows recorded before `cutoff`. Returns how many went, for the cleanup
+    /// summary.
+    @discardableResult
+    func deleteRecords(olderThan cutoff: Date) -> Int {
+        let request = NSFetchRequest<NSFetchRequestResult>(entityName: "TranscriptionRecordEntity")
+        request.predicate = NSPredicate(format: "date < %@", cutoff as NSDate)
+        let batch = NSBatchDeleteRequest(fetchRequest: request)
+        batch.resultType = .resultTypeCount
+        let result = (try? context.execute(batch)) as? NSBatchDeleteResult
+        saveAndFetch()
+        let deleted = result?.result as? Int ?? 0
+        if deleted > 0 { flog("HistoryStore: deleted \(deleted) dictation record(s) before \(cutoff)") }
+        return deleted
+    }
+
+    /// The iOS-facing wrapper: reads the shared period and applies it. On macOS
+    /// `CleanupService` owns the schedule and calls `deleteRecords` directly.
     func performAutoCleanup() {
         #if os(iOS)
         let defaults = UserDefaults(suiteName: "group.com.corvinvoice.app") ?? .standard
@@ -121,12 +138,7 @@ class HistoryStore: ObservableObject {
         }
 
         guard let cutoff = cutoff else { return }
-
-        let request = NSFetchRequest<NSFetchRequestResult>(entityName: "TranscriptionRecordEntity")
-        request.predicate = NSPredicate(format: "date < %@", cutoff as NSDate)
-        let batch = NSBatchDeleteRequest(fetchRequest: request)
-        _ = try? context.execute(batch)
-        saveAndFetch()
+        deleteRecords(olderThan: cutoff)
     }
 
     func searchRecords(_ query: String) -> [TranscriptionRecord] {

@@ -47,6 +47,9 @@ final class FileTranscriptionQueue: ObservableObject {
         /// Snapshot of the active vocabulary when queued, so editing it later
         /// does not change a job already waiting.
         var vocabulary: Vocabulary? = nil
+        /// Model chosen for this job; nil means the app's active model. Set by
+        /// "transcribe again" in History, which must not move the active model.
+        var modelID: String? = nil
         var status: Status = .pending
         var progress: ChunkProgress = .none
         var startedAt: Date?
@@ -168,10 +171,11 @@ final class FileTranscriptionQueue: ObservableObject {
 
     /// "Transcribe again" on a file from the transcribed list, with the
     /// current checkbox.
-    func rerun(_ url: URL) {
+    /// - Parameter modelID: model to run this time; nil keeps the active one.
+    func rerun(_ url: URL, modelID: String? = nil) {
         // A call recording is transcribed as a call again: its channels are
         // what tell the speakers apart.
-        enqueue(urls: [url], mode: registry.mode(for: url) ?? currentMode)
+        enqueue(urls: [url], mode: registry.mode(for: url) ?? currentMode, modelID: modelID)
     }
 
     /// A finished call recording: two channels, the user and the other side.
@@ -179,7 +183,7 @@ final class FileTranscriptionQueue: ObservableObject {
         enqueue(urls: [url], mode: .call)
     }
 
-    private func enqueue(urls: [URL], mode: TranscriptMode) {
+    private func enqueue(urls: [URL], mode: TranscriptMode, modelID: String? = nil) {
         let accepted = urls.compactMap(Self.acceptableAudioURL)
         guard !accepted.isEmpty else { return }
 
@@ -192,7 +196,9 @@ final class FileTranscriptionQueue: ObservableObject {
 
         let freshSet = Set(fresh.map { $0.standardizedFileURL })
         jobs.removeAll { $0.status.isFinished && $0.mode == mode && freshSet.contains($0.url.standardizedFileURL) }
-        jobs.append(contentsOf: fresh.map { Job(url: $0, mode: mode, vocabulary: vocabularies.active) })
+        jobs.append(contentsOf: fresh.map {
+            Job(url: $0, mode: mode, vocabulary: vocabularies.active, modelID: modelID)
+        })
         flog("FileQueue: enqueued \(fresh.count) file(s) as \(mode.rawValue), \(jobs.count) total")
 
         checkWriteAccess(for: fresh)
@@ -359,7 +365,7 @@ final class FileTranscriptionQueue: ObservableObject {
             cancelCurrent.value = true
             flog("FileQueue: restarting \(job.url.lastPathComponent) as \(currentMode.rawValue)")
         case .saved, .savedToFallback, .empty, .failed, .cancelled:
-            enqueue(urls: [job.url], mode: restartMode(for: job.mode))
+            enqueue(urls: [job.url], mode: restartMode(for: job.mode), modelID: job.modelID)
         }
     }
 
@@ -411,6 +417,7 @@ final class FileTranscriptionQueue: ObservableObject {
         let url = job.url
         let mode = job.mode
         let vocabulary = job.vocabulary
+        let modelID = job.modelID
         update(jobID) { $0.startedAt = Date() }
 
         // Let the hotkey dictation flow finish before starting a new file.
@@ -427,6 +434,11 @@ final class FileTranscriptionQueue: ObservableObject {
 
         guard modelManager.activeModel != nil else {
             finish(jobID, .failed, error: "test.noModel".localized)
+            return
+        }
+        // A job can carry a model of its own; it may have been deleted since.
+        if let modelID, !modelManager.models.contains(where: { $0.id == modelID && $0.isDownloaded }) {
+            finish(jobID, .failed, error: "history.error.modelMissing".localized)
             return
         }
         if mode == .roles, let problem = diarizationProblem() {
@@ -447,7 +459,7 @@ final class FileTranscriptionQueue: ObservableObject {
         let stamp = TranscriptRegistry.SourceStamp.read(url)
 
         if mode == .call {
-            await processCall(jobID, url: url, stamp: stamp, vocabulary: vocabulary)
+            await processCall(jobID, url: url, stamp: stamp, vocabulary: vocabulary, modelID: modelID)
             return
         }
 
@@ -507,7 +519,7 @@ final class FileTranscriptionQueue: ObservableObject {
         do {
             result = try await engine.transcribeTimed(
                 audioData: pcm,
-                options: TranscriptionOptions(prompt: prompt, wordTimestamps: mode == .roles),
+                options: TranscriptionOptions(prompt: prompt, wordTimestamps: mode == .roles, modelID: modelID),
                 onProgress: progress,
                 shouldYield: { busy.value },
                 shouldCancel: { cancel.value }
@@ -534,7 +546,7 @@ final class FileTranscriptionQueue: ObservableObject {
             text = plainText
         }
         update(jobID) { $0.text = text }
-        save(jobID, text: text, url: url, mode: mode, stamp: stamp, vocabulary: vocabulary)
+        save(jobID, text: text, url: url, mode: mode, stamp: stamp, vocabulary: vocabulary, modelID: modelID)
     }
 
     /// A call recording: the left channel is the user, the right one the app,
@@ -542,7 +554,7 @@ final class FileTranscriptionQueue: ObservableObject {
     /// are there, to tell voices apart in a group call; without them it is one
     /// "Other", which is all a one-to-one call needs.
     private func processCall(_ jobID: UUID, url: URL, stamp: TranscriptRegistry.SourceStamp?,
-                             vocabulary: Vocabulary?) async {
+                             vocabulary: Vocabulary?, modelID: String?) async {
         update(jobID) { $0.status = .decoding }
         let channels: (left: Data, right: Data)
         do {
@@ -593,7 +605,7 @@ final class FileTranscriptionQueue: ObservableObject {
             for (index, pcm) in [channels.left, channels.right].enumerated() where audible[index] {
                 words[index] = try await engine.transcribeTimed(
                     audioData: pcm,
-                    options: TranscriptionOptions(prompt: prompt, wordTimestamps: true),
+                    options: TranscriptionOptions(prompt: prompt, wordTimestamps: true, modelID: modelID),
                     onProgress: progressHandler(for: jobID, part: index, of: 2),
                     shouldYield: { busy.value },
                     shouldCancel: { cancel.value }
@@ -617,7 +629,7 @@ final class FileTranscriptionQueue: ObservableObject {
         }
         let text = CallTranscriptBuilder.format(turns)
         update(jobID) { $0.text = text }
-        save(jobID, text: text, url: url, mode: .call, stamp: stamp, vocabulary: vocabulary)
+        save(jobID, text: text, url: url, mode: .call, stamp: stamp, vocabulary: vocabulary, modelID: modelID)
     }
 
     /// Chunk progress for one of `parts` equal-length runs of a job, so two
@@ -651,7 +663,8 @@ final class FileTranscriptionQueue: ObservableObject {
     }
 
     private func save(_ jobID: UUID, text: String, url: URL, mode: TranscriptMode,
-                      stamp: TranscriptRegistry.SourceStamp?, vocabulary: Vocabulary?) {
+                      stamp: TranscriptRegistry.SourceStamp?, vocabulary: Vocabulary?,
+                      modelID: String?) {
         do {
             let output = try TranscriptSaver.write(text: text,
                                                    audioName: url.lastPathComponent,
@@ -659,7 +672,7 @@ final class FileTranscriptionQueue: ObservableObject {
                                                    into: destination(for: url))
             update(jobID) { $0.outputURL = output }
             finish(jobID, .saved)
-            remember(url, mode: mode, output: output, stamp: stamp, vocabulary: vocabulary)
+            remember(url, mode: mode, output: output, stamp: stamp, vocabulary: vocabulary, modelID: modelID)
         } catch {
             flog("FileQueue: save failed for \(url.lastPathComponent): \(error)")
             // Don't lose a transcript that cost minutes to produce. Application
@@ -672,7 +685,7 @@ final class FileTranscriptionQueue: ObservableObject {
                                                        into: TranscriptSaver.fallbackDirectory)
                 update(jobID) { $0.outputURL = output }
                 finish(jobID, .savedToFallback)
-                remember(url, mode: mode, output: output, stamp: stamp, vocabulary: vocabulary)
+                remember(url, mode: mode, output: output, stamp: stamp, vocabulary: vocabulary, modelID: modelID)
             } catch {
                 finish(jobID, .failed, error: error.localizedDescription)
             }
@@ -694,9 +707,12 @@ final class FileTranscriptionQueue: ObservableObject {
     }
 
     private func remember(_ url: URL, mode: TranscriptMode, output: URL,
-                          stamp: TranscriptRegistry.SourceStamp?, vocabulary: Vocabulary?) {
+                          stamp: TranscriptRegistry.SourceStamp?, vocabulary: Vocabulary?,
+                          modelID: String?) {
         guard let stamp else { return }
-        registry.add(source: url, mode: mode, output: output, stamp: stamp, dictionaryName: vocabulary?.name)
+        registry.add(source: url, mode: mode, output: output, stamp: stamp,
+                     dictionaryName: vocabulary?.name,
+                     modelID: modelID ?? modelManager.activeModel?.id)
     }
 
     private subscript(jobID: UUID) -> Job? {
@@ -727,7 +743,8 @@ final class FileTranscriptionQueue: ObservableObject {
         }
         restartJobID = nil
         let url = jobs[index].url
-        jobs[index] = Job(url: url, mode: restartMode(for: jobs[index].mode), vocabulary: vocabularies.active)
+        jobs[index] = Job(url: url, mode: restartMode(for: jobs[index].mode),
+                          vocabulary: vocabularies.active, modelID: jobs[index].modelID)
     }
 
     // MARK: - Manual saving

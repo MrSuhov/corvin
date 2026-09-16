@@ -97,7 +97,9 @@ FileTranscriptionQueue ─► AudioFileDecoder ─► [roles] DiarizationClient 
 MicSource (AVAudioEngine + voice processing) ─┐  16 kHz mono + host time
 ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter ─► PCM CAF parts (L = me, R = app)
   or ScreenCaptureSource (13–14.1)            ─┘        Stop ─► merge ─► AAC .m4a ─► FileTranscriptionQueue (.call)
-.call job: decodeChannels ─► transcribeTimed(L), transcribeTimed(R) ─► [diarize R] ─► EchoFilter ─► CallTranscriptBuilder
+.call job: decodeChannels ─► SpeechSegmenter.spans ─► CompactedAudio (speech only + time map)
+           ─► transcribeTimed(L′), transcribeTimed(R′) ─► place words back ─► [diarize R]
+           ─► EchoFilter ─► CallTranscriptBuilder.turns ─► header + [HH:MM:SS] Me: / Other:
 ```
 
 - Menubar "Record Call ▸ <app>" (`AudioAppCatalog`: helpers by bundle-ID prefix, WebKit GPU process by
@@ -113,7 +115,28 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
   PCM rather than AAC while recording because only PCM CAF survives a crash.
 - Roles come from channels ("Me" / "Other"); diarization only splits the other side in group calls.
   `EchoFilter` drops mic phrases also heard on the app channel (speakers without headphones).
-  Silent channels are not sent to whisper, which hallucinates on silence.
+- **The shape and the times of a transcript come from the audio, not from whisper.**
+  `SpeechSegmenter` (20 ms frames, RMS, threshold clamped both ways) finds each channel's speech; the
+  recording pads a quiet channel with silence instead of closing the gap, so a sample position *is*
+  call time. Two stretches of one side are one reply when less than `joinPause` (3 s) apart and the
+  other side said nothing in between — a flat pause threshold would shred a monologue instead, which
+  is how "one block stamped [00:00:00]" happened in the first place. A reply past 40 s is cut at a
+  silence between its spans.
+- `CompactedAudio` hands whisper the speech alone and maps word times back. Whisper invents text on
+  silence and its token times drift by up to ~2 s, so words are only used to decide *which* reply
+  they belong to, with the boundary nudged to the widest gap between words near it. The 0.4 s
+  separators also fix where `splitAtSilence` cuts its 25 s chunks — always in a separator, so no word
+  is split and drift cannot accumulate past one chunk.
+- `TranscriptionOptions.suppressNonSpeech` (calls only) turns on `suppress_nst`, drops segments whose
+  `no_speech_prob` is over 0.6 and those that merely describe a sound ("[Аплодисменты]", a ring tone
+  as "ДИНАМИЧНАЯ МУЗЫКА") — each would otherwise become a turn with a timestamp.
+- Diarization runs on the **original** right channel, not the compacted one: mapping segments back
+  would stretch one across the real silence, and the diarizer's 10 s window holds three voices at
+  most, which compaction would overfill exactly in a group call.
+- The header (`call.transcript.*`) names the app, the start and the length, from `CallIndex` through
+  `FileTranscriptionQueue.callInfo`; a call recorded before the index has no header.
+- `SpeechSegmenterFieldCheck` (skipped unless `CORVIN_CALL_FILE` is set) prints a real recording's
+  spans and replies — thresholds can be calibrated without waiting for whisper.
 - Tap permission ("System Audio Recording", `NSAudioCaptureUsageDescription`) has no preflight: a
   denied tap delivers silence, surfaced as a warning. Spike app: `CallSpike` (scratch, not in repo).
 

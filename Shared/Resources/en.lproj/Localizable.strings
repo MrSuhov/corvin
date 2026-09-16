@@ -466,6 +466,9 @@
 "call.warning.writeFailed" = "Could not write the recording — stopping";
 "settings.permissions.systemAudio" = "System audio recording (calls)";
 "settings.permissions.screenRecording" = "Screen and system audio recording (calls)";
+"call.transcript.app" = "Call: %@";
+"call.transcript.startedAt" = "Started: %@";
+"call.transcript.duration" = "Length: %@";
 "roles.me" = "Me";
 "roles.other" = "Other";
 "roles.otherNumbered" = "Other %d";

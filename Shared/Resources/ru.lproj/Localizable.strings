@@ -466,6 +466,9 @@
 "call.warning.writeFailed" = "Не удалось записать файл — остановка";
 "settings.permissions.systemAudio" = "Запись системного звука (звонки)";
 "settings.permissions.screenRecording" = "Запись экрана и системного звука (звонки)";
+"call.transcript.app" = "Звонок: %@";
+"call.transcript.startedAt" = "Начало: %@";
+"call.transcript.duration" = "Длительность: %@";
 "roles.me" = "Я";
 "roles.other" = "Собеседник";
 "roles.otherNumbered" = "Собеседник %d";

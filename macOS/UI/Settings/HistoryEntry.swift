@@ -59,10 +59,6 @@ struct HistoryEntry: Identifiable, Equatable {
 
     /// `1:02:03`, or `2:03` for anything under an hour.
     static func formatDuration(_ seconds: TimeInterval) -> String {
-        let total = max(0, Int(seconds))
-        if total >= 3600 {
-            return String(format: "%d:%02d:%02d", total / 3600, total % 3600 / 60, total % 60)
-        }
-        return String(format: "%d:%02d", total / 60, total % 60)
+        RolesFormatter.duration(seconds)
     }
 }

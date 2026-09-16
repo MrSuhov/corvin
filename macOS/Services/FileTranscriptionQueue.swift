@@ -101,6 +101,11 @@ final class FileTranscriptionQueue: ObservableObject {
     private let diarizationModels: DiarizationModelStore
     private let registry: TranscriptRegistry
     private let vocabularies: VocabularyStore
+    /// What a recording was: which app, when, how long — for a call
+    /// transcript's header. A closure rather than `CallIndex` itself: the queue
+    /// has no business knowing how calls are remembered, and `AppDelegate`
+    /// owns both sides.
+    var callInfo: ((URL) -> CallInfo?)?
 
     /// Mirror of `sessionManager.state` that is safe to read from the whisper
     /// worker thread; `@Published` properties are only safe on the main queue.
@@ -549,17 +554,33 @@ final class FileTranscriptionQueue: ObservableObject {
         save(jobID, text: text, url: url, mode: mode, stamp: stamp, vocabulary: vocabulary, modelID: modelID)
     }
 
-    /// A call recording: the left channel is the user, the right one the app,
-    /// each transcribed on its own. The other side is diarized when the models
-    /// are there, to tell voices apart in a group call; without them it is one
-    /// "Other", which is all a one-to-one call needs.
+    /// A call recording: the left channel is the user, the right one the app.
+    ///
+    /// The speech in each channel is found first (`SpeechSegmenter`), because
+    /// that — not whisper's word times — is what gives the transcript its
+    /// replies and their timestamps. Whisper is then handed the speech alone,
+    /// with the silence taken out: it invents text on silence, and it would
+    /// spend minutes on it either way. The other side is diarized when the
+    /// models are there, to tell voices apart in a group call; without them it
+    /// is one "Other", which is all a one-to-one call needs.
     private func processCall(_ jobID: UUID, url: URL, stamp: TranscriptRegistry.SourceStamp?,
                              vocabulary: Vocabulary?, modelID: String?) async {
         update(jobID) { $0.status = .decoding }
-        let channels: (left: Data, right: Data)
+        // Decided here, on the main actor, so the decode can keep the channel
+        // diarization needs and the file is never read twice.
+        let canDiarize = diarizationProblem() == nil
+        let sides: [CompactedAudio]
+        let otherChannel: Data
         do {
-            channels = try await Task.detached(priority: .utility) {
-                try AudioFileDecoder.decodeChannels(url: url)
+            // Segmentation walks every sample of both channels — an hour of
+            // call is 58 million per side — so it stays off the main actor with
+            // the decoding.
+            (sides, otherChannel) = try await Task.detached(priority: .utility) {
+                let channels = try AudioFileDecoder.decodeChannels(url: url)
+                let sides = [channels.left, channels.right].map {
+                    CompactedAudio.make($0, spans: SpeechSegmenter.spans($0))
+                }
+                return (sides, canDiarize ? channels.right : Data())
             }.value
         } catch {
             flog("FileQueue: decode failed for call \(url.lastPathComponent): \(error)")
@@ -570,18 +591,26 @@ final class FileTranscriptionQueue: ObservableObject {
             finishCancelled(jobID)
             return
         }
+        flog("FileQueue: call \(url.lastPathComponent): "
+             + sides.map { String(format: "%.0fs speech in %d span(s)", $0.duration, $0.spans.count) }
+                 .joined(separator: ", "))
 
-        // Whisper invents text on silence, so a muted microphone or a denied
-        // system-audio permission must not reach it.
-        let audible = [AudioFileDecoder.isAudible(channels.left), AudioFileDecoder.isAudible(channels.right)]
+        // A channel with no speech is not sent anywhere: a muted microphone, a
+        // denied system-audio permission, or simply a side that said nothing.
+        let heard = sides.map { !$0.isEmpty }
         let cancel = cancelCurrent
 
         var speakers: [SpeakerSegment] = []
-        if audible[1], diarizationProblem() == nil {
+        if heard[1], canDiarize {
             update(jobID) { $0.status = .diarizing }
             do {
+                // The original channel, not the compacted one: mapping segments
+                // back would stretch a segment that crossed a separator over
+                // the real silence between two replies, and the diarizer's
+                // window holds only three voices — compaction would pack more
+                // of them into it, exactly in the group call where it matters.
                 speakers = try await DiarizationClient.diarize(
-                    pcm: channels.right,
+                    pcm: otherChannel,
                     modelsDirectory: diarizationModels.directory,
                     onProgress: progressHandler(for: jobID),
                     shouldCancel: { cancel.value }
@@ -600,16 +629,22 @@ final class FileTranscriptionQueue: ObservableObject {
         }
         let prompt = await fittedPrompt(for: vocabulary)
         let busy = micBusy
+        let parts = heard.filter { $0 }.count
         var words: [[TimedWord]] = [[], []]
+        var part = 0
         do {
-            for (index, pcm) in [channels.left, channels.right].enumerated() where audible[index] {
-                words[index] = try await engine.transcribeTimed(
-                    audioData: pcm,
-                    options: TranscriptionOptions(prompt: prompt, wordTimestamps: true, modelID: modelID),
-                    onProgress: progressHandler(for: jobID, part: index, of: 2),
+            for (index, side) in sides.enumerated() where heard[index] {
+                let spoken = try await engine.transcribeTimed(
+                    audioData: side.pcm,
+                    options: TranscriptionOptions(prompt: prompt, wordTimestamps: true,
+                                                  modelID: modelID, suppressNonSpeech: true),
+                    onProgress: progressHandler(for: jobID, part: part, of: parts),
                     shouldYield: { busy.value },
                     shouldCancel: { cancel.value }
                 ).words
+                // Compacted time back onto the recording's timeline.
+                words[index] = side.place(spoken)
+                part += 1
             }
         } catch is CancellationError {
             flog("FileQueue: transcription of call \(url.lastPathComponent) interrupted")
@@ -622,12 +657,16 @@ final class FileTranscriptionQueue: ObservableObject {
         }
 
         let mine = EchoFilter.filter(me: words[0], other: words[1])
-        let turns = CallTranscriptBuilder.build(me: mine, other: words[1], otherSegments: speakers)
+        let turns = CallTranscriptBuilder.turns(
+            me: CallTranscriptBuilder.Channel(spans: sides[0].spans, words: mine),
+            other: CallTranscriptBuilder.Channel(spans: sides[1].spans, words: words[1],
+                                                 speakers: speakers)
+        )
         guard !turns.isEmpty else {
             finish(jobID, .empty)
             return
         }
-        let text = CallTranscriptBuilder.format(turns)
+        let text = CallTranscriptBuilder.format(turns, call: callInfo?(url))
         update(jobID) { $0.text = text }
         save(jobID, text: text, url: url, mode: .call, stamp: stamp, vocabulary: vocabulary, modelID: modelID)
     }

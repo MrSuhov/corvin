@@ -82,6 +82,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Calls whose audio the user deleted by hand are not worth remembering,
         // unless a transcript still points at them.
         callIndex.prune(keeping: Set(transcriptRegistry.records.map { $0.sourcePath }))
+        // So a call transcript can name the app it came from. Weak: the index
+        // outlives no one here, but the queue must not be what keeps it alive.
+        fileQueue.callInfo = { [weak callIndex] url in callIndex?.info(for: url) }
         callRecorder = CallRecorder(fileQueue: fileQueue, callIndex: callIndex)
         cleanupService = CleanupService(registry: transcriptRegistry, callIndex: callIndex,
                                         historyStore: historyStore, fileQueue: fileQueue)

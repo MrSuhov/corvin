@@ -42,6 +42,12 @@ struct TranscriptionOptions {
     /// History re-transcribes a file with a model of its own choosing while
     /// dictation keeps using the active one.
     var modelID: String?
+    /// Drop what is not speech: ring tones, music, applause. Whisper describes
+    /// such audio ("ДИНАМИЧНАЯ МУЗЫКА", "[Аплодисменты]") instead of ignoring
+    /// it, which in a call transcript would become a turn of its own with a
+    /// timestamp. Off for dictation, where the audio is a person talking into a
+    /// microphone on purpose.
+    var suppressNonSpeech = false
 
     static let plain = TranscriptionOptions()
 }
@@ -390,6 +396,7 @@ class TranscriptionEngine: ObservableObject {
                     params.n_threads = Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 2))
                     params.print_progress = false
                     params.token_timestamps = options.wordTimestamps
+                    params.suppress_nst = options.suppressNonSpeech
 
                     // The token carries the generation this run started on, so
                     // the callback aborts only for *its own* invalidation and
@@ -453,6 +460,17 @@ class TranscriptionEngine: ObservableObject {
                         if let prompt = options.prompt, Self.isPromptEcho(text, prompt: prompt) {
                             flog("chunk \(idx+1): dropped segment repeating the prompt")
                             continue
+                        }
+                        if options.suppressNonSpeech {
+                            let silence = whisper_full_get_segment_no_speech_prob(ctx, i)
+                            if silence > Self.nonSpeechProbability {
+                                flog("chunk \(idx+1): dropped '\(text.prefix(40))' (no speech, p=\(silence))")
+                                continue
+                            }
+                            if Self.isSoundEvent(text) {
+                                flog("chunk \(idx+1): dropped '\(text.prefix(40))' (a described sound)")
+                                continue
+                            }
                         }
                         fullText += text
                         if options.wordTimestamps {
@@ -625,6 +643,37 @@ class TranscriptionEngine: ObservableObject {
         }
         finishWord()
         return words
+    }
+
+    /// How sure whisper has to be that a segment holds no speech before it is
+    /// dropped. Only consulted with `suppressNonSpeech`, and deliberately
+    /// close to certainty: dropping a segment takes its words with it, and a
+    /// reply left without words disappears from a call transcript. Segments
+    /// straddling a compacted stream's separator carry a raised probability
+    /// even when someone is talking, which is the other reason not to be brave
+    /// here. Ring tones and music are caught by `isSoundEvent` anyway.
+    static let nonSpeechProbability: Float = 0.9
+
+    /// Whisper describes audio it cannot transcribe rather than staying quiet:
+    /// "[Аплодисменты]", "(phone ringing)", "ДИНАМИЧНАЯ МУЗЫКА". One bracketed
+    /// phrase, or several words in capitals with no punctuation at all —
+    /// neither is how a person's speech comes back. Shouting does come back in
+    /// capitals, but it keeps its commas and exclamation marks, and one
+    /// bracketed aside inside a sentence keeps the sentence.
+    static func isSoundEvent(_ segment: String) -> Bool {
+        let text = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        for pair in [("[", "]"), ("(", ")")] where text.hasPrefix(pair.0) && text.hasSuffix(pair.1) {
+            // Not "[Музыка] я вас слушаю [Аплодисменты]", which would take the
+            // speech between them along with it.
+            let inside = text.dropFirst().dropLast()
+            if !inside.contains(where: { "[]()".contains($0) }) { return true }
+        }
+        let words = text.split(whereSeparator: { $0.isWhitespace })
+        guard words.count >= 2, !text.contains(where: { ",.!?…".contains($0) }) else { return false }
+        let letters = text.filter { $0.isLetter }
+        guard letters.count >= 6 else { return false }
+        return letters.allSatisfy { $0.isUppercase }
     }
 
     /// Whisper given a prompt sometimes "transcribes" silence as the prompt

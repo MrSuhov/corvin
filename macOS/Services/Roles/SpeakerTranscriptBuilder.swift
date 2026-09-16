@@ -225,7 +225,7 @@ enum SpeakerTranscriptBuilder {
 
     // MARK: - Text
 
-    private static func endsSentence(_ word: String) -> Bool {
+    static func endsSentence(_ word: String) -> Bool {
         word.last.map(sentenceEnd.contains) ?? false
     }
 
@@ -250,6 +250,16 @@ enum RolesFormatter {
         return turns.map { turn in
             "[\(timestamp(turn.start))] \(label(turn.speaker)):\n\(turn.text)"
         }.joined(separator: "\n\n") + "\n"
+    }
+
+    /// `1:02:03`, or `2:03` for anything under an hour — a length, not a
+    /// position, so it is not zero-padded.
+    static func duration(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        if total >= 3600 {
+            return String(format: "%d:%02d:%02d", total / 3600, total % 3600 / 60, total % 60)
+        }
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     static func timestamp(_ seconds: TimeInterval) -> String {

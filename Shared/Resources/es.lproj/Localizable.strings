@@ -466,6 +466,9 @@
 "call.warning.writeFailed" = "No se pudo escribir la grabación: deteniendo";
 "settings.permissions.systemAudio" = "Grabación del audio del sistema (llamadas)";
 "settings.permissions.screenRecording" = "Grabación de pantalla y audio del sistema (llamadas)";
+"call.transcript.app" = "Llamada: %@";
+"call.transcript.startedAt" = "Inicio: %@";
+"call.transcript.duration" = "Duración: %@";
 "roles.me" = "Yo";
 "roles.other" = "Interlocutor";
 "roles.otherNumbered" = "Interlocutor %d";

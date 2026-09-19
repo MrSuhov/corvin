@@ -243,7 +243,7 @@ final class StatusBarController: NSObject {
         // File transcription
         let transcribeFile = NSMenuItem(
             title: "menu.transcribeFile".localized,
-            action: #selector(showSettingsTranscription),
+            action: #selector(transcribeFile),
             keyEquivalent: ""
         )
         transcribeFile.target = self
@@ -283,7 +283,7 @@ final class StatusBarController: NSObject {
         // Calls and transcribed files live in the settings window; dictation
         // texts keep their own window above.
         let recordingsItem = NSMenuItem(title: "menu.recordings".localized,
-                                        action: #selector(showSettingsHistory), keyEquivalent: "")
+                                        action: #selector(showSettingsFiles), keyEquivalent: "")
         recordingsItem.target = self
         menu.addItem(recordingsItem)
         menu.addItem(NSMenuItem.separator())
@@ -452,12 +452,15 @@ final class StatusBarController: NSObject {
         appDelegate?.showSettingsWindow(tab: .models)
     }
 
-    @objc private func showSettingsHistory() {
-        appDelegate?.showSettingsWindow(tab: .history)
+    @objc private func showSettingsFiles() {
+        appDelegate?.showSettingsWindow(tab: .files)
     }
 
-    @objc private func showSettingsTranscription() {
-        appDelegate?.showSettingsWindow(tab: .transcription)
+    /// Straight to the open panel; the chosen files then show up in Files.
+    @objc private func transcribeFile() {
+        let urls = AudioFileImport.chooseFiles()
+        guard !urls.isEmpty else { return }
+        appDelegate?.openFiles(urls)
     }
 
     @objc private func showAbout() {

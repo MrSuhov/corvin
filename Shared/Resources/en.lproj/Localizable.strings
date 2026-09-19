@@ -18,23 +18,16 @@
 "settings.tab.models" = "Models";
 "settings.tab.layout" = "Layout";
 "settings.tab.indicator" = "Indicator";
-"settings.tab.history" = "History";
 "settings.tab.permissions" = "Permissions";
 "settings.tab.language" = "Language";
-"settings.tab.transcription" = "Transcription";
 
 // MARK: - Test Transcription
-"test.recording.title" = "Test Recording";
 "test.recording.hold" = "Hold the button to record";
 "test.recording.holdRelease" = "Recording... Release to stop";
-"test.file.title" = "File Transcription";
 "test.file.formats" = "Supported: OGG (Telegram), WEBM, WAV, M4A, MP3, AIFF, FLAC, CAF";
-"test.file.choose" = "Choose Files…";
 "test.file.chooseMessage" = "Select audio files to transcribe";
-"test.result" = "Result";
 "test.copy" = "Copy";
 "test.noModel" = "Model not loaded";
-"test.file.dropHint" = "or drag files anywhere on this pane";
 "test.elapsed" = "%d sec.";
 "test.output.label" = "Save transcripts to:";
 "test.output.nextToAudio" = "next to the audio file";
@@ -47,15 +40,11 @@
 "test.perm.chooseFolder" = "Choose Folder…";
 "test.perm.openSettings" = "Open Settings";
 "test.perm.continueAnyway" = "Transcribe Anyway";
-"test.queue.summary" = "%d of %d done";
-"test.queue.stop" = "Stop";
 "test.queue.stopping" = "Stopping after the current file. Press again to interrupt it.";
 "test.queue.aborting" = "Interrupting the current file…";
-"test.queue.clear" = "Clear";
 "test.queue.saveAll" = "Save All…";
 "test.queue.saveAllMessage" = "Choose a folder for the unsaved transcripts";
 "test.queue.saveAs" = "Save As…";
-"test.queue.reveal" = "Show in Finder";
 "test.status.pending" = "waiting";
 "test.status.waitingMic" = "waiting for the microphone";
 "test.status.decoding" = "decoding…";
@@ -410,7 +399,6 @@
 "diarization.models.error.invalid" = "The speaker recognition model list is invalid.";
 "diarization.models.error.checksum" = "A downloaded speaker recognition model is damaged. Try again.";
 "diarization.models.error.download" = "Could not download speaker recognition models: %@";
-"test.dialog.toggle" = "Dialog recognition (split by speaker)";
 "test.dialog.hint" = "Each speaker's words become a separate paragraph, saved as name_roles.txt next to name.txt.";
 "test.dialog.requiresMacOS14" = "Dialog recognition requires macOS 14 or later.";
 "test.dialog.modelsNeeded" = "Speaker recognition models are needed (%@).";
@@ -420,12 +408,9 @@
 "test.dialog.updateAvailable" = "An update for the speaker recognition models is available.";
 "test.dialog.update" = "Update";
 "test.status.diarizing" = "recognizing speakers…";
-"test.queue.restart" = "Stop and restart with the current settings";
-"test.history.title" = "Transcribed files";
 "test.history.clear" = "Clear list";
 "test.history.changed" = "audio changed after transcription";
 "test.history.missing" = "audio file not found";
-"test.history.rerun" = "Transcribe again with the current settings";
 "test.history.remove" = "Remove from the list (transcripts stay on disk)";
 "test.history.badge.plain" = "TXT";
 "test.history.badge.roles" = "ROLES";
@@ -478,10 +463,8 @@
 "test.call.chunk.hint" = "Each part is closed as it completes, so a crash costs at most the part in flight; the parts are merged into one file when the call ends.";
 "history.error.modelMissing" = "The model chosen for this file is no longer downloaded.";
 
-/* History tab */
-"history.files.empty" = "No recordings or transcribed files yet";
+/* Files tab: file card */
 "history.files.callFrom" = "Call from %@";
-"history.files.source" = "Source";
 "history.files.file" = "File";
 "history.files.recorded" = "Recorded";
 "history.files.duration" = "Duration";
@@ -495,16 +478,13 @@
 "history.files.saveAs" = "Save as…";
 "history.files.reveal" = "Show in Finder";
 "history.files.retranscribe" = "Transcribe again";
-"history.files.queued" = "Already in the queue";
 "history.files.mode.call" = "Roles from the call's two channels";
-"history.files.mode.roles" = "Dialog mode: a paragraph per speaker";
-"history.files.mode.plain" = "Plain text";
 "history.files.model.notDownloaded" = "%@ is not downloaded (%@). Download it and transcribe?";
 "history.files.model.download" = "Download and transcribe";
 "history.files.model.downloading" = "Downloading %@…";
 "history.files.badge.call" = "CALL";
 "settings.tab.settings" = "Settings";
-"menu.recordings" = "Recordings and Calls…";
+"menu.recordings" = "Files…";
 
 /* Cleanup */
 "settings.cleanup.callAudio" = "Delete call recordings older than";
@@ -516,3 +496,18 @@
 "settings.cleanup.confirm.title" = "Delete old files automatically?";
 "settings.cleanup.confirm.message" = "Corvin will delete them permanently, without the Trash.";
 "settings.cleanup.confirm.enable" = "Turn on";
+
+/* Files tab */
+"settings.tab.files" = "Files";
+"files.add" = "Add Files…";
+"files.empty" = "Drag audio files here, or onto any tab, or click Add Files.";
+"files.select" = "Select a file on the left.";
+"files.recognition" = "Transcription";
+"files.mode.plain" = "Plain text";
+"files.mode.roles" = "By speaker";
+"files.mode.plain.hint" = "One block of text, saved as name.txt.";
+"files.transcribe" = "Transcribe";
+"files.stop" = "Stop";
+"files.stopAll" = "Stop All";
+"files.defaults.hint" = "Files you add next are transcribed the same way.";
+"models.test.title" = "Try the active model";

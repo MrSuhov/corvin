@@ -95,9 +95,9 @@ FileTranscriptionQueue ─► AudioFileDecoder ─► [roles] DiarizationClient 
                         ─► SpeakerTranscriptBuilder + RolesFormatter ─► TranscriptSaver ─► TranscriptRegistry
 ```
 
-- Transcription settings pane: plain jobs write `<name>.txt`; "Dialog recognition" (macOS 14+)
-  writes `<name>_roles.txt` as `[HH:MM:SS] Speaker N:` paragraphs. Mode and dictionary are fixed per
-  job when queued; `stopAndRestart` cancels one job and re-queues it with current settings.
+- Files tab: plain jobs write `<name>.txt`; "By speaker" (macOS 14+) writes `<name>_roles.txt` as
+  `[HH:MM:SS] Speaker N:` paragraphs. Mode, model and dictionary are fixed per job when queued;
+  `cancel` stops one job (a pending one never starts), and a different mode is a new run.
 - Diarization is FluidAudio (CoreML) in `Helpers/Diarizer`, a separate macOS 14 package run as a
   process: Corvin targets 11 and cannot import it, and FluidAudio's macOS 14 BNNS crash stays in the
   helper. It loads models only from disk (`ModelHub.offlineMode`, no download path).
@@ -170,19 +170,27 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
 - Tap permission ("System Audio Recording", `NSAudioCaptureUsageDescription`) has no preflight: a
   denied tap delivers silence, surfaced as a warning. Spike app: `CallSpike` (scratch, not in repo).
 
-### Settings window and History (macOS)
+### Settings window and Files (macOS)
 
-- Sidebar: **Transcription, Models, History, Settings** (`SettingsTab`). Everything that used to be a
+- Sidebar: **Files, Models, Settings** (`SettingsTab`). Everything that used to be a
   tab of its own — general, language, indicator, layout, cleanup, permissions — is a section of
   `ConsolidatedSettingsView`, reusing the same pane structs (their root `Form` is a `VStack` now).
   The window is resizable (900×600, min 720×460, frame autosaved); the sidebar keeps a fixed width
   and the detail pane stays `.clipped()`, and every picker is capped at 360 pt — a wide picker used
   to shove the sidebar sideways.
-- **History tab** (`HistoryFilesView`) lists everything with an audio file: calls and transcribed
-  files (`HistoryEntry.merge` over `TranscriptRegistry` + `CallIndex`). The card shows the app a
-  call came from, "Save as…" (a copy) and "Show in Finder" for the audio and each transcript, and
-  re-transcribes with a model picker. Dictation texts keep their own menubar window
-  ("Dictation history…"); "Recordings and Calls…" opens this tab.
+- **Files tab** (`FilesView`) is the only place files are handled: calls, transcribed files and
+  files still in the queue (`HistoryEntry.merge` over `TranscriptRegistry` + `CallIndex` + the
+  queue's jobs — a just-added file has no registry row until its transcript is written). A job's
+  status and progress show in its row; there is no separate queue list. Audio dropped on **any**
+  tab, "Add Files…", the menubar "Transcribe File…" and Finder's "Open with" all queue at once and
+  select the file in Files (`SettingsTabSelection.show(added:)`).
+- The card's **Transcription** block — plain / by speaker, model, Transcribe / Stop — is the only
+  place the choice is made. A run remembers it (`dialogMode`, `defaultModelID`) for files added
+  next; there is no global toggle. A call has no mode choice (its channels give the roles). The card
+  also shows "Save as…" (a copy) and "Show in Finder" for the audio and each transcript. Output
+  folder and dictionary sit in the bar above the list. Testing a model by voice (`ModelTestView`) is
+  in Models; the call part length is a section of Settings. Dictation texts keep their own menubar
+  window ("Dictation history…").
 - **Per-job model**: `TranscriptionOptions.modelID` (nil = active model) is loaded for that run only,
   so re-transcribing never moves the model fn dictation uses. A model chosen but not downloaded is
   offered for download first, and only an explicit yes starts it. Because two runs can now want

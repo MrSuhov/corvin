@@ -30,7 +30,7 @@ final class TranscriptRegistry: ObservableObject {
         let sourceModified: Date
         let dictionaryName: String?
         let date: Date
-        /// Which model made this transcript, for the History card. Absent in
+        /// Which model made this transcript, for the Files card. Absent in
         /// files written before it was recorded.
         var modelID: String?
         /// The roles slot also holds call transcripts; this is what tells

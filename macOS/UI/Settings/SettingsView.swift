@@ -4,26 +4,25 @@ import UniformTypeIdentifiers
 
 /// The sidebar. Everything that used to be a tab of its own — general,
 /// language, indicator, layout, cleanup, permissions — is a section of
-/// `.settings` now; only the three places with real work in them stay.
+/// `.settings` now; files (imported, recorded, in the queue) are one tab, and
+/// testing a model lives with the models.
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case transcription, models, history, settings
+    case files, models, settings
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .transcription: return "settings.tab.transcription".localized
+        case .files: return "settings.tab.files".localized
         case .models: return "settings.tab.models".localized
-        case .history: return "settings.tab.history".localized
         case .settings: return "settings.tab.settings".localized
         }
     }
 
     var icon: String {
         switch self {
-        case .transcription: return "mic.badge.plus"
+        case .files: return "waveform"
         case .models: return "cpu"
-        case .history: return "clock"
         case .settings: return "gear"
         }
     }
@@ -31,11 +30,23 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 class SettingsTabSelection: ObservableObject {
     @Published var tab: SettingsTab = .settings
+    /// The file selected in the Files tab. Here rather than in the tab's own
+    /// state so a drop on any tab, or a file opened from Finder, can select it.
+    @Published var filePath: String?
+
+    /// After files were added: the Files tab, with the first of them selected.
+    func show(added urls: [URL]) {
+        guard let first = urls.first else { return }
+        tab = .files
+        filePath = first.standardizedFileURL.path
+    }
 }
 
 struct SettingsView: View {
     @ObservedObject var selection: SettingsTabSelection
     @ObservedObject private var localization = LocalizationManager.shared
+    @EnvironmentObject var fileQueue: FileTranscriptionQueue
+    @State private var isDropTargeted = false
 
     // Window/layout geometry. `windowWidth`/`windowHeight` are the size the
     // window opens at the first time; it is resizable, and AppDelegate pins its
@@ -43,7 +54,7 @@ struct SettingsView: View {
     static let windowWidth: CGFloat = 900
     static let windowHeight: CGFloat = 600
     static let sidebarWidth: CGFloat = 200
-    /// Below this the History card and the settings sections stop being
+    /// Below this the Files card and the settings sections stop being
     /// readable; AppDelegate pins the window to it.
     static let minWindowWidth: CGFloat = 720
     static let minWindowHeight: CGFloat = 460
@@ -73,6 +84,19 @@ struct SettingsView: View {
         }
         .frame(minWidth: Self.minWindowWidth, maxWidth: .infinity,
                minHeight: Self.minWindowHeight, maxHeight: .infinity)
+        // Audio can be dropped on any tab; it lands in Files, selected.
+        .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+            AudioFileImport.handleDrop(providers) { urls in
+                selection.show(added: fileQueue.enqueue(urls: urls))
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .padding(2)
+                .opacity(isDropTargeted ? 1 : 0)
+                .allowsHitTesting(false)
+        )
         // Rebuild the whole subtree on language change so every `.localized`
         // call (including the enum-backed sidebar labels) re-evaluates against
         // the freshly-set bundle.
@@ -109,9 +133,8 @@ struct SettingsView: View {
     private var detailContent: some View {
         Group {
             switch selection.tab {
-            case .transcription: TestTranscriptionView()
+            case .files: FilesView(selection: selection)
             case .models: ModelSettingsView()
-            case .history: HistoryFilesView()
             case .settings: ConsolidatedSettingsView()
             }
         }
@@ -269,8 +292,13 @@ struct ModelSettingsView: View {
     @EnvironmentObject var modelManager: ModelManager
 
     var body: some View {
-        ModelManagerView()
-            .environmentObject(modelManager)
+        VStack(spacing: 0) {
+            ModelManagerView()
+                .environmentObject(modelManager)
+            Divider()
+            ModelTestView()
+                .padding()
+        }
     }
 }
 

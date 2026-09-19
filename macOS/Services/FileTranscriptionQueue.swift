@@ -181,7 +181,7 @@ final class FileTranscriptionQueue: ObservableObject {
 
     /// The remembered model if it can still run; otherwise nil, which means
     /// the active model — a deleted model must not fail every file added next.
-    static func resolveModelID(_ preferred: String?, downloaded: Set<String>) -> String? {
+    nonisolated static func resolveModelID(_ preferred: String?, downloaded: Set<String>) -> String? {
         guard let preferred, downloaded.contains(preferred) else { return nil }
         return preferred
     }

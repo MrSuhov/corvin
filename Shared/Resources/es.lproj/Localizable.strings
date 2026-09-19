@@ -18,23 +18,16 @@
 "settings.tab.models" = "Modelos";
 "settings.tab.layout" = "Distribución";
 "settings.tab.indicator" = "Indicador";
-"settings.tab.history" = "Historial";
 "settings.tab.permissions" = "Permisos";
 "settings.tab.language" = "Idioma";
-"settings.tab.transcription" = "Transcripción";
 
 // MARK: - Test Transcription
-"test.recording.title" = "Grabación de prueba";
 "test.recording.hold" = "Mantén pulsado el botón para grabar";
 "test.recording.holdRelease" = "Grabando… Suelta el botón para detener";
-"test.file.title" = "Transcribir un archivo";
 "test.file.formats" = "Compatibles: OGG (Telegram), WEBM, WAV, M4A, MP3, AIFF, FLAC, CAF";
-"test.file.choose" = "Elegir archivos…";
 "test.file.chooseMessage" = "Elige los archivos de audio que quieres transcribir";
-"test.result" = "Resultado";
 "test.copy" = "Copiar";
 "test.noModel" = "Modelo no cargado";
-"test.file.dropHint" = "o arrastra archivos a cualquier punto de este panel";
 "test.elapsed" = "%d s";
 "test.output.label" = "Guardar las transcripciones en:";
 "test.output.nextToAudio" = "junto al archivo de audio";
@@ -47,15 +40,11 @@
 "test.perm.chooseFolder" = "Elegir carpeta…";
 "test.perm.openSettings" = "Abrir Ajustes";
 "test.perm.continueAnyway" = "Transcribir igualmente";
-"test.queue.summary" = "%d de %d listos";
-"test.queue.stop" = "Detener";
 "test.queue.stopping" = "Se detendrá al terminar el archivo actual. Pulsa de nuevo para interrumpirlo.";
 "test.queue.aborting" = "Interrumpiendo el archivo actual…";
-"test.queue.clear" = "Vaciar";
 "test.queue.saveAll" = "Guardar todo…";
 "test.queue.saveAllMessage" = "Elige una carpeta para las transcripciones sin guardar";
 "test.queue.saveAs" = "Guardar como…";
-"test.queue.reveal" = "Mostrar en el Finder";
 "test.status.pending" = "en espera";
 "test.status.waitingMic" = "esperando al micrófono";
 "test.status.decoding" = "decodificando…";
@@ -410,7 +399,6 @@
 "diarization.models.error.invalid" = "La lista de modelos de reconocimiento de hablantes no es válida.";
 "diarization.models.error.checksum" = "Un modelo de reconocimiento de hablantes descargado está dañado. Inténtalo de nuevo.";
 "diarization.models.error.download" = "No se pudieron descargar los modelos de reconocimiento de hablantes: %@";
-"test.dialog.toggle" = "Reconocimiento de diálogos (por hablante)";
 "test.dialog.hint" = "Las palabras de cada hablante van en un párrafo aparte, en name_roles.txt junto a name.txt.";
 "test.dialog.requiresMacOS14" = "El reconocimiento de diálogos requiere macOS 14 o posterior.";
 "test.dialog.modelsNeeded" = "Se necesitan los modelos de reconocimiento de hablantes (%@).";
@@ -420,12 +408,9 @@
 "test.dialog.updateAvailable" = "Hay una actualización de los modelos de reconocimiento de hablantes.";
 "test.dialog.update" = "Actualizar";
 "test.status.diarizing" = "reconociendo hablantes…";
-"test.queue.restart" = "Detener y reiniciar con los ajustes actuales";
-"test.history.title" = "Archivos transcritos";
 "test.history.clear" = "Vaciar lista";
 "test.history.changed" = "el audio cambió después de la transcripción";
 "test.history.missing" = "archivo de audio no encontrado";
-"test.history.rerun" = "Transcribir de nuevo con los ajustes actuales";
 "test.history.remove" = "Quitar de la lista (las transcripciones se conservan)";
 "test.history.badge.plain" = "TXT";
 "test.history.badge.roles" = "ROLES";
@@ -478,10 +463,8 @@
 "test.call.chunk.hint" = "Cada parte se cierra al completarse, así que un fallo cuesta como máximo la parte en curso; al terminar la llamada las partes se unen en un archivo.";
 "history.error.modelMissing" = "El modelo elegido para este archivo ya no está descargado.";
 
-/* History tab */
-"history.files.empty" = "Aún no hay grabaciones ni archivos transcritos";
+/* Files tab: file card */
 "history.files.callFrom" = "Llamada desde %@";
-"history.files.source" = "Fuente";
 "history.files.file" = "Archivo";
 "history.files.recorded" = "Grabado";
 "history.files.duration" = "Duración";
@@ -495,16 +478,13 @@
 "history.files.saveAs" = "Guardar como…";
 "history.files.reveal" = "Mostrar en Finder";
 "history.files.retranscribe" = "Transcribir de nuevo";
-"history.files.queued" = "Ya está en la cola";
 "history.files.mode.call" = "Roles según los dos canales de la llamada";
-"history.files.mode.roles" = "Modo diálogo: un párrafo por hablante";
-"history.files.mode.plain" = "Texto simple";
 "history.files.model.notDownloaded" = "El modelo %@ no está descargado (%@). ¿Descargarlo y transcribir?";
 "history.files.model.download" = "Descargar y transcribir";
 "history.files.model.downloading" = "Descargando %@…";
 "history.files.badge.call" = "LLAMADA";
 "settings.tab.settings" = "Ajustes";
-"menu.recordings" = "Grabaciones y llamadas…";
+"menu.recordings" = "Archivos…";
 
 /* Cleanup */
 "settings.cleanup.callAudio" = "Eliminar grabaciones de llamadas anteriores a";
@@ -516,3 +496,18 @@
 "settings.cleanup.confirm.title" = "¿Eliminar archivos antiguos automáticamente?";
 "settings.cleanup.confirm.message" = "Corvin los eliminará de forma permanente, sin pasar por la Papelera.";
 "settings.cleanup.confirm.enable" = "Activar";
+
+/* Files tab */
+"settings.tab.files" = "Archivos";
+"files.add" = "Añadir archivos…";
+"files.empty" = "Arrastra archivos de audio aquí o a cualquier pestaña, o pulsa Añadir archivos.";
+"files.select" = "Selecciona un archivo a la izquierda.";
+"files.recognition" = "Transcripción";
+"files.mode.plain" = "Texto";
+"files.mode.roles" = "Por hablante";
+"files.mode.plain.hint" = "Un solo bloque de texto, guardado como name.txt.";
+"files.transcribe" = "Transcribir";
+"files.stop" = "Detener";
+"files.stopAll" = "Detener todo";
+"files.defaults.hint" = "Los próximos archivos que añadas se transcribirán igual.";
+"models.test.title" = "Probar el modelo activo";

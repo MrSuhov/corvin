@@ -1,35 +1,140 @@
 import AppKit
 import SwiftUI
 
-/// The History tab: everything Corvin has recorded or transcribed, with a card
-/// for the selected entry.
-struct HistoryFilesView: View {
+/// The Files tab: everything Corvin has recorded, transcribed or is
+/// transcribing, with a card for the selected file. Files are added here, by a
+/// drop on any tab, or from Finder; the card is the one place to choose how a
+/// file is transcribed.
+struct FilesView: View {
+    @ObservedObject var selection: SettingsTabSelection
+
     @EnvironmentObject var registry: TranscriptRegistry
     @EnvironmentObject var callIndex: CallIndex
     @EnvironmentObject var fileQueue: FileTranscriptionQueue
-    @EnvironmentObject var modelManager: ModelManager
+    @EnvironmentObject var vocabularies: VocabularyStore
+    @EnvironmentObject var transcriptionEngine: TranscriptionEngine
     @ObservedObject private var localization = LocalizationManager.shared
 
-    /// Keyed by path rather than index: the list is rebuilt whenever the
-    /// registry refreshes its source states.
-    @State private var selectedPath: String?
+    @State private var isEditingVocabularies = false
 
     private var entries: [HistoryEntry] {
-        HistoryEntry.merge(records: registry.records, calls: callIndex.calls)
+        HistoryEntry.merge(records: registry.records, calls: callIndex.calls, jobs: fileQueue.jobs)
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            list
-                .frame(minWidth: 240, idealWidth: 300, maxWidth: 340)
+        VStack(spacing: 0) {
+            toolbar
             Divider()
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            HStack(spacing: 0) {
+                list
+                    .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
+                Divider()
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .id(localization.currentLanguage)
         .onAppear {
             registry.refreshSourceStates()
-            if selectedPath == nil { selectedPath = entries.first?.path }
+            if selection.filePath == nil { selection.filePath = entries.first?.path }
+        }
+    }
+
+    // MARK: - Toolbar
+
+    /// Adding files, and where their transcripts go.
+    private var toolbar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 14) {
+                Button {
+                    selection.show(added: fileQueue.enqueue(urls: AudioFileImport.chooseFiles()))
+                } label: {
+                    Label("files.add".localized, systemImage: "plus")
+                }
+                .modifier(BorderedButtonCompat())
+
+                Divider()
+                    .frame(height: 34)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    outputRow
+                    vocabularyRow
+                }
+                Spacer(minLength: 0)
+            }
+
+            if !fileQueue.blockedDirectories.isEmpty {
+                blockedBanner
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private var outputRow: some View {
+        HStack(spacing: 6) {
+            Text("test.output.label".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(outputDirectoryLabel)
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Button("test.output.choose".localized) { fileQueue.chooseOutputDirectory() }
+                .modifier(BorderedButtonCompat())
+                .controlSize(.small)
+            if fileQueue.outputDirectory != nil {
+                Button {
+                    fileQueue.clearOutputDirectory()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .help("test.output.reset".localized)
+            }
+        }
+    }
+
+    private var vocabularyRow: some View {
+        HStack(spacing: 6) {
+            Text("test.vocabulary.label".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Picker("test.vocabulary.label".localized, selection: $vocabularies.activeID) {
+                Text("test.vocabulary.none".localized).tag(UUID?.none)
+                ForEach(vocabularies.vocabularies) { vocabulary in
+                    Text(vocabulary.name).tag(UUID?.some(vocabulary.id))
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 200)
+            Button("test.vocabulary.edit".localized) { isEditingVocabularies = true }
+                .modifier(BorderedButtonCompat())
+                .controlSize(.small)
+        }
+        .sheet(isPresented: $isEditingVocabularies) {
+            VocabularyEditorView()
+                .environmentObject(vocabularies)
+                .environmentObject(transcriptionEngine)
+        }
+    }
+
+    private var outputDirectoryLabel: String {
+        guard let directory = fileQueue.outputDirectory else {
+            return "test.output.nextToAudio".localized
+        }
+        return (directory.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    private var blockedBanner: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+            Text("test.perm.banner".localized(with: fileQueue.blockedDirectories.count))
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -39,11 +144,14 @@ struct HistoryFilesView: View {
         VStack(spacing: 0) {
             if entries.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "clock")
+                    Image(systemName: "square.and.arrow.down")
                         .font(.system(size: 28))
                         .foregroundColor(.secondary)
-                    Text("history.files.empty".localized)
+                    Text("files.empty".localized)
                         .font(.caption)
+                        .multilineTextAlignment(.center)
+                    Text("test.file.formats".localized)
+                        .font(.caption2)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -53,12 +161,11 @@ struct HistoryFilesView: View {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(entries) { entry in
-                            HistoryFileRow(entry: entry,
-                                           isSelected: entry.path == selectedPath,
-                                           isQueued: isQueued(entry),
-                                           state: sourceState(entry))
+                            FileRow(entry: entry,
+                                    isSelected: entry.path == selection.filePath,
+                                    state: sourceState(entry))
                                 .contentShape(Rectangle())
-                                .onTapGesture { selectedPath = entry.path }
+                                .onTapGesture { selection.filePath = entry.path }
                         }
                     }
                     .padding(6)
@@ -66,54 +173,77 @@ struct HistoryFilesView: View {
             }
 
             Divider()
-
-            HStack {
-                Text("history.count".localized(with: entries.count))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button("test.history.clear".localized) {
-                    registry.removeAll()
-                    callIndex.removeAll()
-                    selectedPath = nil
-                }
-                .modifier(BorderedButtonCompat())
-                .controlSize(.small)
-                .disabled(entries.isEmpty)
-            }
-            .padding(8)
+            footer
         }
     }
 
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if fileQueue.stopRequested {
+                Text((fileQueue.abortRequested ? "test.queue.aborting" : "test.queue.stopping").localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 6) {
+                Text("history.count".localized(with: entries.count))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer(minLength: 0)
+                if fileQueue.isRunning {
+                    Button("files.stopAll".localized) { fileQueue.requestStop() }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                        .disabled(fileQueue.abortRequested)
+                }
+                if !fileQueue.unsavedJobs.isEmpty {
+                    Button("test.queue.saveAll".localized) { fileQueue.saveAllUnsaved() }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                }
+                Button("test.history.clear".localized) {
+                    registry.removeAll()
+                    callIndex.removeAll()
+                    fileQueue.clearFinished()
+                    selection.filePath = nil
+                }
+                .modifier(BorderedButtonCompat())
+                .controlSize(.small)
+                .disabled(entries.allSatisfy { $0.isQueued })
+            }
+        }
+        .padding(8)
+    }
+
+    // MARK: - Detail
+
     @ViewBuilder
     private var detail: some View {
-        if let entry = entries.first(where: { $0.path == selectedPath }) {
-            HistoryFileDetail(entry: entry,
-                              state: sourceState(entry),
-                              isQueued: isQueued(entry),
-                              onRemove: {
-                                  if let record = entry.record { registry.remove(record) }
-                                  callIndex.remove(entry.url)
-                                  selectedPath = nil
-                              })
-                // A new entry gets a fresh card: without this the model choice
-                // and a pending download confirmation would follow the
-                // selection to the next call.
+        if let entry = entries.first(where: { $0.path == selection.filePath }) {
+            FileDetail(entry: entry,
+                       state: sourceState(entry),
+                       onRemove: {
+                           if let record = entry.record { registry.remove(record) }
+                           callIndex.remove(entry.url)
+                           fileQueue.forgetFinished(entry.url)
+                           selection.filePath = nil
+                       })
+                // A new entry gets a fresh card: without this the mode and
+                // model choice and a pending download confirmation would follow
+                // the selection to the next file.
                 .id(entry.path)
         } else {
-            Text("history.files.empty".localized)
+            Text((entries.isEmpty ? "files.empty" : "files.select").localized)
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private func isQueued(_ entry: HistoryEntry) -> Bool {
-        fileQueue.jobs.contains { !$0.status.isFinished && $0.url.standardizedFileURL.path == entry.path }
-    }
-
     /// Whether the audio still looks like what was transcribed. Unknown for a
-    /// call with no transcript yet, so fall back to plain existence.
+    /// file with no transcript yet, so fall back to plain existence.
     private func sourceState(_ entry: HistoryEntry) -> TranscriptRegistry.SourceState {
         if let record = entry.record,
            let state = registry.state(of: record, .roles) ?? registry.state(of: record, .plain) {
@@ -123,38 +253,102 @@ struct HistoryFilesView: View {
     }
 }
 
+// MARK: - Job status
+
+/// How a job reads in the list and on the card.
+extension FileTranscriptionQueue.Job {
+
+    /// The job should be shown instead of the file's usual icon and subtitle:
+    /// it is under way, or its last attempt did not produce a transcript.
+    var isNoteworthy: Bool {
+        switch status {
+        case .saved: return false
+        default: return true
+        }
+    }
+
+    var statusText: String {
+        switch status {
+        case .pending: return "test.status.pending".localized
+        case .waitingForMic: return "test.status.waitingMic".localized
+        case .decoding: return "test.status.decoding".localized
+        case .diarizing: return "test.status.diarizing".localized
+        case .transcribing:
+            return progress.total > 1
+                ? "test.status.chunk".localized(with: progress.current, progress.total)
+                : "status.transcribing".localized
+        case .saved: return outputURL?.lastPathComponent ?? ""
+        case .savedToFallback: return "test.status.fallback".localized
+        case .empty: return "test.status.empty".localized
+        case .cancelled: return "test.status.cancelled".localized
+        case .failed: return error ?? "test.status.failed".localized
+        }
+    }
+
+    var statusIcon: String {
+        switch status {
+        case .pending, .waitingForMic: return "clock"
+        case .decoding, .diarizing, .transcribing: return "waveform"
+        case .saved: return "checkmark.circle.fill"
+        case .savedToFallback: return "exclamationmark.circle.fill"
+        case .empty: return "minus.circle"
+        case .cancelled: return "stop.circle"
+        case .failed: return "xmark.circle.fill"
+        }
+    }
+
+    var statusColor: Color {
+        switch status {
+        case .decoding, .diarizing, .transcribing: return .accentColor
+        case .saved: return .green
+        case .savedToFallback: return .orange
+        case .failed: return .red
+        default: return .secondary
+        }
+    }
+
+    /// A share of the work, when there is one to show.
+    var fraction: Double? {
+        guard !status.isFinished, progress.total > 1 else { return nil }
+        return Double(progress.current) / Double(progress.total)
+    }
+}
+
 // MARK: - Row
 
-struct HistoryFileRow: View {
+struct FileRow: View {
     let entry: HistoryEntry
     let isSelected: Bool
-    let isQueued: Bool
     let state: TranscriptRegistry.SourceState
+
+    private var job: FileTranscriptionQueue.Job? {
+        entry.job.flatMap { $0.isNoteworthy ? $0 : nil }
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: icon)
-                .foregroundColor(iconColor)
+            Image(systemName: job?.statusIcon ?? icon)
+                .foregroundColor(job?.statusColor ?? iconColor)
                 .frame(width: 16)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(entry.appName ?? entry.fileName)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(subtitle)
+                if let fraction = job?.fraction {
+                    ProgressView(value: fraction)
+                        .progressViewStyle(.linear)
+                        .controlSize(.small)
+                }
+                Text(job?.statusText ?? subtitle)
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(job?.status == .failed ? .red : .secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
 
             Spacer(minLength: 4)
-
-            if isQueued {
-                ProgressView()
-                    .controlSize(.small)
-            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
@@ -197,15 +391,16 @@ struct HistoryFileRow: View {
 
 // MARK: - Detail card
 
-struct HistoryFileDetail: View {
+struct FileDetail: View {
     let entry: HistoryEntry
     let state: TranscriptRegistry.SourceState
-    let isQueued: Bool
     let onRemove: () -> Void
 
     @EnvironmentObject var fileQueue: FileTranscriptionQueue
     @EnvironmentObject var modelManager: ModelManager
+    @EnvironmentObject var diarizationModels: DiarizationModelStore
 
+    @State private var mode: TranscriptMode = .plain
     @State private var selectedModelID: String?
     /// Chosen in the picker but not downloaded: nothing happens until the user
     /// says so.
@@ -216,39 +411,63 @@ struct HistoryFileDetail: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                source
-                audio
+                header
+                recognition
                 transcripts
-                retranscribe
+                audio
 
                 Button("test.history.remove".localized, action: onRemove)
                     .modifier(BorderedButtonCompat())
                     .controlSize(.small)
                     .foregroundColor(.red)
+                    .disabled(entry.isQueued)
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
+            diarizationModels.refresh()
+            mode = initialMode
             if selectedModelID == nil {
-                selectedModelID = entry.variants.compactMap { $0.variant.modelID }.first
-                    ?? modelManager.activeModel?.id
+                selectedModelID = initialModelID
             }
         }
     }
 
+    // MARK: Choice the card opens with
+
+    /// What this file was last transcribed as, else the last choice anywhere.
+    private var initialMode: TranscriptMode {
+        if let job = entry.job, job.mode != .call { return job.mode }
+        let latest = entry.variants.filter { $0.mode != .call }.max { $0.variant.date < $1.variant.date }
+        return latest?.mode ?? fileQueue.currentMode
+    }
+
+    private var initialModelID: String? {
+        if let job = entry.job, let id = job.modelID { return id }
+        let latest = entry.variants.max { $0.variant.date < $1.variant.date }
+        return latest?.variant.modelID
+            ?? fileQueue.currentModelID
+            ?? modelManager.activeModel?.id
+    }
+
     // MARK: Sections
 
-    private var source: some View {
-        section("history.files.source".localized) {
-            if let app = entry.appName {
-                row("history.files.callFrom".localized(with: app), entry.call?.bundleID ?? "")
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(entry.appName.map { "history.files.callFrom".localized(with: $0) } ?? entry.fileName)
+                .font(.title3)
+                .lineLimit(2)
+                .truncationMode(.middle)
+            if entry.call != nil || entry.record != nil {
+                row("history.files.recorded".localized, Self.dateFormatter.string(from: entry.date))
             }
-            row("history.files.recorded".localized, Self.dateFormatter.string(from: entry.date))
             if let duration = entry.duration {
                 row("history.files.duration".localized, HistoryEntry.formatDuration(duration))
             }
-            row("history.files.file".localized, entry.fileName)
+            if entry.appName != nil {
+                row("history.files.file".localized, entry.fileName)
+            }
             switch state {
             case .changed:
                 caption("test.history.changed".localized, color: .orange)
@@ -263,17 +482,136 @@ struct HistoryFileDetail: View {
         }
     }
 
-    private var audio: some View {
-        section("history.files.audio".localized) {
+    /// The one place to choose how a file is transcribed. The choice also
+    /// becomes the default for files added next.
+    private var recognition: some View {
+        section("files.recognition".localized) {
+            if entry.isCall {
+                caption("history.files.mode.call".localized, color: .secondary)
+            } else {
+                Picker("", selection: $mode) {
+                    Text("files.mode.plain".localized).tag(TranscriptMode.plain)
+                    Text("files.mode.roles".localized).tag(TranscriptMode.roles)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 260)
+                .disabled(!DiarizationClient.isSupportedSystem || entry.isQueued)
+
+                if !DiarizationClient.isSupportedSystem {
+                    caption("test.dialog.requiresMacOS14".localized, color: .secondary)
+                } else {
+                    caption((mode == .roles ? "test.dialog.hint" : "files.mode.plain.hint").localized,
+                            color: .secondary)
+                }
+            }
+
             HStack(spacing: 8) {
-                Button("history.files.saveAs".localized) { FileActions.saveCopy(of: entry.url) }
+                Picker("", selection: $selectedModelID) {
+                    ForEach(modelManager.models) { model in
+                        Label {
+                            Text("\(model.name) · \(model.size)")
+                        } icon: {
+                            Image(systemName: model.isDownloaded ? "checkmark.circle.fill" : "icloud.and.arrow.down")
+                        }
+                        .tag(Optional(model.id))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 260)
+                .disabled(entry.isQueued)
+                .onChange(of: selectedModelID) { _ in selectionChanged() }
+
+                if let job = entry.job, entry.isQueued {
+                    Button("files.stop".localized) { fileQueue.cancel(job.id) }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                } else {
+                    Button((entry.variants.isEmpty && entry.job == nil
+                            ? "files.transcribe" : "history.files.retranscribe").localized) {
+                        fileQueue.rerun(entry.url, mode: runMode, modelID: selectedModelID)
+                    }
                     .modifier(BorderedButtonCompat())
                     .controlSize(.small)
-                Button("history.files.reveal".localized) { FileActions.reveal(entry.url) }
+                    .disabled(!canRun)
+                }
+            }
+
+            if let job = entry.job, job.isNoteworthy {
+                jobStatus(job)
+            }
+
+            if mode == .roles, !entry.isCall, !entry.isQueued {
+                DiarizationModelsStatusView()
+            }
+
+            modelDownload
+
+            if let downloadError {
+                caption(downloadError, color: .red)
+            }
+
+            if !entry.isCall, DiarizationClient.isSupportedSystem {
+                caption("files.defaults.hint".localized, color: .secondary)
+            }
+        }
+    }
+
+    private func jobStatus(_ job: FileTranscriptionQueue.Job) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: job.statusIcon)
+                .foregroundColor(job.statusColor)
+            if let fraction = job.fraction {
+                ProgressView(value: fraction)
+                    .frame(width: 120)
+            }
+            Text(job.statusText)
+                .font(.caption)
+                .foregroundColor(job.status == .failed ? .red : .secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            if job.status == .failed, job.text?.isEmpty == false {
+                Button("test.queue.saveAs".localized) { fileQueue.saveAs(jobID: job.id) }
                     .modifier(BorderedButtonCompat())
                     .controlSize(.small)
             }
-            .disabled(state == .missing)
+        }
+    }
+
+    @ViewBuilder
+    private var modelDownload: some View {
+        if let progress = downloadProgress, let model = pendingDownload {
+            HStack(spacing: 8) {
+                ProgressView(value: progress)
+                    .frame(width: 120)
+                Text("history.files.model.downloading".localized(with: model.name))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Button("common.cancel".localized) {
+                    modelManager.cancelDownload(model)
+                    downloadProgress = nil
+                    restoreSelection()
+                }
+                .modifier(BorderedButtonCompat())
+                .controlSize(.small)
+            }
+        } else if let model = pendingDownload {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("history.files.model.notDownloaded".localized(with: model.name, model.size))
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button("history.files.model.download".localized) { startDownload(model) }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                    Button("common.cancel".localized) { restoreSelection() }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                }
+            }
+            .padding(8)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(6)
         }
     }
 
@@ -326,75 +664,35 @@ struct HistoryFileDetail: View {
         }
     }
 
-    private var retranscribe: some View {
-        section("history.files.retranscribe".localized) {
-            caption(modeCaption, color: .secondary)
-
+    private var audio: some View {
+        section("history.files.audio".localized) {
             HStack(spacing: 8) {
-                Picker("", selection: $selectedModelID) {
-                    ForEach(modelManager.models) { model in
-                        Label {
-                            Text("\(model.name) · \(model.size)")
-                        } icon: {
-                            Image(systemName: model.isDownloaded ? "checkmark.circle.fill" : "icloud.and.arrow.down")
-                        }
-                        .tag(Optional(model.id))
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 260)
-                .onChange(of: selectedModelID) { _ in selectionChanged() }
-
-                Button("history.files.retranscribe".localized) {
-                    fileQueue.rerun(entry.url, modelID: selectedModelID)
-                }
-                .modifier(BorderedButtonCompat())
-                .controlSize(.small)
-                .disabled(state == .missing || isQueued || pendingDownload != nil || downloadProgress != nil)
-            }
-
-            if isQueued {
-                caption("history.files.queued".localized, color: .secondary)
-            }
-
-            if let progress = downloadProgress, let model = pendingDownload {
-                HStack(spacing: 8) {
-                    ProgressView(value: progress)
-                        .frame(width: 120)
-                    Text("history.files.model.downloading".localized(with: model.name))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Button("common.cancel".localized) {
-                        modelManager.cancelDownload(model)
-                        downloadProgress = nil
-                        restoreSelection()
-                    }
+                Button("history.files.saveAs".localized) { FileActions.saveCopy(of: entry.url) }
                     .modifier(BorderedButtonCompat())
                     .controlSize(.small)
-                }
-            } else if let model = pendingDownload {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("history.files.model.notDownloaded".localized(with: model.name, model.size))
-                        .font(.caption)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 8) {
-                        Button("history.files.model.download".localized) { startDownload(model) }
-                            .modifier(BorderedButtonCompat())
-                            .controlSize(.small)
-                        Button("common.cancel".localized) { restoreSelection() }
-                            .modifier(BorderedButtonCompat())
-                            .controlSize(.small)
-                    }
-                }
-                .padding(8)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(6)
+                Button("history.files.reveal".localized) { FileActions.reveal(entry.url) }
+                    .modifier(BorderedButtonCompat())
+                    .controlSize(.small)
             }
-
-            if let downloadError {
-                caption(downloadError, color: .red)
-            }
+            .disabled(state == .missing)
         }
+    }
+
+    // MARK: Running
+
+    /// A call is transcribed as a call whatever the segment says: its channels
+    /// are what tell the speakers apart.
+    private var runMode: TranscriptMode {
+        if entry.isCall { return .call }
+        return mode == .roles && DiarizationClient.isSupportedSystem ? .roles : .plain
+    }
+
+    private var canRun: Bool {
+        guard state != .missing, pendingDownload == nil, downloadProgress == nil else { return false }
+        // Without the speaker models the job would only fail; the card offers
+        // the download instead.
+        if runMode == .roles, !diarizationModels.isInstalled { return false }
+        return true
     }
 
     // MARK: Model choice
@@ -420,7 +718,9 @@ struct HistoryFileDetail: View {
             switch result {
             case .success:
                 pendingDownload = nil
-                fileQueue.rerun(entry.url, modelID: model.id)
+                if canRun {
+                    fileQueue.rerun(entry.url, mode: runMode, modelID: model.id)
+                }
             case .failure(let error):
                 downloadError = error.localizedDescription
                 restoreSelection()
@@ -433,13 +733,6 @@ struct HistoryFileDetail: View {
         pendingDownload = nil
         selectedModelID = modelManager.activeModel?.id
             ?? modelManager.models.first(where: { $0.isDownloaded })?.id
-    }
-
-    private var modeCaption: String {
-        if entry.isCall { return "history.files.mode.call".localized }
-        return fileQueue.dialogMode && DiarizationClient.isSupportedSystem
-            ? "history.files.mode.roles".localized
-            : "history.files.mode.plain".localized
     }
 
     private func modelName(_ id: String) -> String {
@@ -492,7 +785,62 @@ struct HistoryFileDetail: View {
     }()
 }
 
-/// Reveal and "save a copy", the two things History does with files on disk.
+// MARK: - Speaker models
+
+/// The speaker recognition models, when they need attention: missing, being
+/// downloaded, or with an update. Nothing when they are in order.
+struct DiarizationModelsStatusView: View {
+    @EnvironmentObject var diarizationModels: DiarizationModelStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let progress = diarizationModels.progress {
+                HStack(spacing: 8) {
+                    ProgressView(value: progress)
+                        .frame(width: 120)
+                    caption("test.dialog.downloading".localized)
+                    Button("test.dialog.cancel".localized) { diarizationModels.cancel() }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                }
+            } else if !diarizationModels.isInstalled {
+                HStack(spacing: 8) {
+                    caption("test.dialog.modelsNeeded".localized(with: sizeLabel))
+                    Button("test.dialog.download".localized) { Task { await diarizationModels.install() } }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                }
+            } else if diarizationModels.updateAvailable {
+                HStack(spacing: 8) {
+                    caption("test.dialog.updateAvailable".localized)
+                    Button("test.dialog.update".localized) { Task { await diarizationModels.install() } }
+                        .modifier(BorderedButtonCompat())
+                        .controlSize(.small)
+                }
+            }
+
+            if let error = diarizationModels.error {
+                Text(error.text)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var sizeLabel: String {
+        ByteCountFormatter.string(fromByteCount: diarizationModels.currentEntry.sizeBytes, countStyle: .file)
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Reveal and "save a copy", the two things Files does with files on disk.
 enum FileActions {
 
     static func reveal(_ url: URL) {
@@ -513,9 +861,9 @@ enum FileActions {
                 try FileManager.default.removeItem(at: target)
             }
             try FileManager.default.copyItem(at: url, to: target)
-            flog("HistoryFiles: copied \(url.lastPathComponent) to \(target.path)")
+            flog("Files: copied \(url.lastPathComponent) to \(target.path)")
         } catch {
-            flog("HistoryFiles: could not copy \(url.lastPathComponent): \(error)")
+            flog("Files: could not copy \(url.lastPathComponent): \(error)")
         }
     }
 }

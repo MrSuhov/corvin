@@ -1,8 +1,7 @@
 import Foundation
 
 /// Settings of call recording. Recording itself starts from the menubar; this
-/// is the only knob, and it sits in the Transcription pane next to the file
-/// ones.
+/// is the only knob, a section of the Settings tab (`CallSettingsView`).
 enum CallSettings {
     static let chunkMinutesKey = "callRecording.chunkMinutes"
 

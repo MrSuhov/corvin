@@ -18,23 +18,16 @@
 "settings.tab.models" = "Модели";
 "settings.tab.layout" = "Раскладка";
 "settings.tab.indicator" = "Индикатор";
-"settings.tab.history" = "История";
 "settings.tab.permissions" = "Разрешения";
 "settings.tab.language" = "Язык";
-"settings.tab.transcription" = "Транскрибация";
 
 // MARK: - Test Transcription
-"test.recording.title" = "Тест записи";
 "test.recording.hold" = "Удерживайте кнопку для записи";
 "test.recording.holdRelease" = "Запись... Отпустите кнопку для остановки";
-"test.file.title" = "Транскрипция файла";
 "test.file.formats" = "Поддерживаются: OGG (Telegram), WEBM, WAV, M4A, MP3, AIFF, FLAC, CAF";
-"test.file.choose" = "Выбрать файлы…";
 "test.file.chooseMessage" = "Выберите аудиофайлы для транскрипции";
-"test.result" = "Результат";
 "test.copy" = "Копировать";
 "test.noModel" = "Модель не загружена";
-"test.file.dropHint" = "или перетащите файлы в это окно";
 "test.elapsed" = "%d сек.";
 "test.output.label" = "Сохранять расшифровки:";
 "test.output.nextToAudio" = "рядом с аудиофайлом";
@@ -47,15 +40,11 @@
 "test.perm.chooseFolder" = "Выбрать папку…";
 "test.perm.openSettings" = "Открыть Настройки";
 "test.perm.continueAnyway" = "Всё равно транскрибировать";
-"test.queue.summary" = "%d из %d готово";
-"test.queue.stop" = "Остановить";
 "test.queue.stopping" = "Остановимся после текущего файла. Нажмите ещё раз, чтобы прервать его.";
 "test.queue.aborting" = "Прерываем текущий файл…";
-"test.queue.clear" = "Очистить";
 "test.queue.saveAll" = "Сохранить всё…";
 "test.queue.saveAllMessage" = "Выберите папку для несохранённых расшифровок";
 "test.queue.saveAs" = "Сохранить как…";
-"test.queue.reveal" = "Показать в Finder";
 "test.status.pending" = "в очереди";
 "test.status.waitingMic" = "ждём микрофон";
 "test.status.decoding" = "декодирование…";
@@ -410,7 +399,6 @@
 "diarization.models.error.invalid" = "Список моделей распознавания говорящих повреждён.";
 "diarization.models.error.checksum" = "Скачанная модель распознавания говорящих повреждена. Попробуйте ещё раз.";
 "diarization.models.error.download" = "Не удалось скачать модели распознавания говорящих: %@";
-"test.dialog.toggle" = "Распознавание диалогов (по ролям)";
 "test.dialog.hint" = "Речь каждого участника — отдельным абзацем, в файл name_roles.txt рядом с name.txt.";
 "test.dialog.requiresMacOS14" = "Распознавание диалогов требует macOS 14 или новее.";
 "test.dialog.modelsNeeded" = "Нужны модели распознавания говорящих (%@).";
@@ -420,12 +408,9 @@
 "test.dialog.updateAvailable" = "Доступно обновление моделей распознавания говорящих.";
 "test.dialog.update" = "Обновить";
 "test.status.diarizing" = "распознавание говорящих…";
-"test.queue.restart" = "Остановить и перезапустить с текущими настройками";
-"test.history.title" = "Распознанные файлы";
 "test.history.clear" = "Очистить список";
 "test.history.changed" = "аудио изменилось после распознавания";
 "test.history.missing" = "аудиофайл не найден";
-"test.history.rerun" = "Распознать снова с текущими настройками";
 "test.history.remove" = "Убрать из списка (стенограммы останутся на диске)";
 "test.history.badge.plain" = "TXT";
 "test.history.badge.roles" = "РОЛИ";
@@ -478,10 +463,8 @@
 "test.call.chunk.hint" = "Каждая часть сразу закрывается на диске, поэтому сбой стоит не больше одной части; после звонка части сливаются в один файл.";
 "history.error.modelMissing" = "Модель, выбранная для этого файла, больше не скачана.";
 
-/* History tab */
-"history.files.empty" = "Пока нет записей и распознанных файлов";
+/* Files tab: file card */
 "history.files.callFrom" = "Звонок из %@";
-"history.files.source" = "Источник";
 "history.files.file" = "Файл";
 "history.files.recorded" = "Записан";
 "history.files.duration" = "Длительность";
@@ -495,16 +478,13 @@
 "history.files.saveAs" = "Сохранить как…";
 "history.files.reveal" = "Показать в Finder";
 "history.files.retranscribe" = "Распознать заново";
-"history.files.queued" = "Уже в очереди";
 "history.files.mode.call" = "Роли по двум каналам звонка";
-"history.files.mode.roles" = "Режим диалогов: реплика каждого отдельным абзацем";
-"history.files.mode.plain" = "Обычный текст";
 "history.files.model.notDownloaded" = "Модель %@ не скачана (%@). Скачать и распознать?";
 "history.files.model.download" = "Скачать и распознать";
 "history.files.model.downloading" = "Скачивание %@…";
 "history.files.badge.call" = "ЗВОНОК";
 "settings.tab.settings" = "Настройки";
-"menu.recordings" = "Записи и звонки…";
+"menu.recordings" = "Файлы…";
 
 /* Cleanup */
 "settings.cleanup.callAudio" = "Удалять аудиозаписи звонков старше";
@@ -516,3 +496,18 @@
 "settings.cleanup.confirm.title" = "Удалять старые файлы автоматически?";
 "settings.cleanup.confirm.message" = "Corvin будет удалять их безвозвратно, минуя Корзину.";
 "settings.cleanup.confirm.enable" = "Включить";
+
+/* Files tab */
+"settings.tab.files" = "Файлы";
+"files.add" = "Добавить файлы…";
+"files.empty" = "Перетащите аудиофайлы сюда или на любую вкладку — или нажмите «Добавить файлы».";
+"files.select" = "Выберите файл слева.";
+"files.recognition" = "Распознавание";
+"files.mode.plain" = "Текст";
+"files.mode.roles" = "По ролям";
+"files.mode.plain.hint" = "Сплошной текст, сохраняется как name.txt.";
+"files.transcribe" = "Распознать";
+"files.stop" = "Остановить";
+"files.stopAll" = "Остановить все";
+"files.defaults.hint" = "Следующие добавленные файлы распознаются так же.";
+"models.test.title" = "Проверить активную модель";

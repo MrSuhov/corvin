@@ -202,13 +202,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         openFiles(urls)
     }
 
+    /// Files opened from Finder, the Dock or the menubar: queued, and shown
+    /// selected in the Files tab.
     @MainActor
-    private func openFiles(_ urls: [URL]) {
-        showSettingsWindow(tab: .transcription)
+    func openFiles(_ urls: [URL]) {
         // Straight onto the queue rather than through a notification the pane
         // has to already be listening for — that ordering only ever worked
         // because NSHostingView happens to build synchronously.
-        fileQueue.enqueue(urls: urls)
+        let accepted = fileQueue.enqueue(urls: urls)
+        showSettingsWindow(tab: .files)
+        settingsTabSelection.show(added: accepted)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

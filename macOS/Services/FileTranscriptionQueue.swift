@@ -2,8 +2,8 @@ import Foundation
 import AppKit
 import Combine
 
-/// Serial batch transcription of audio files dropped on, or picked in, the
-/// Transcription settings pane.
+/// Serial batch transcription of audio files dropped on the settings window,
+/// picked in the Files pane, or opened with Corvin from Finder.
 ///
 /// Owned by `AppDelegate` and injected as an `@EnvironmentObject` rather than
 /// held by the view: `SettingsView` rebuilds its detail pane with a `switch`
@@ -42,14 +42,16 @@ final class FileTranscriptionQueue: ObservableObject {
     struct Job: Identifiable, Equatable {
         let id = UUID()
         let url: URL
-        /// Fixed when queued; the checkbox only affects new jobs and restarts.
+        /// Fixed when queued.
         var mode: TranscriptMode
         /// Snapshot of the active vocabulary when queued, so editing it later
         /// does not change a job already waiting.
         var vocabulary: Vocabulary? = nil
-        /// Model chosen for this job; nil means the app's active model. Set by
-        /// "transcribe again" in History, which must not move the active model.
+        /// Model chosen for this job; nil means the app's active model. Never
+        /// moves the model fn dictation uses.
         var modelID: String? = nil
+        /// Orders a file that is only in the queue among the Files list.
+        var queuedAt = Date()
         var status: Status = .pending
         var progress: ChunkProgress = .none
         var startedAt: Date?
@@ -75,16 +77,26 @@ final class FileTranscriptionQueue: ObservableObject {
         }
     }
 
-    /// The "Dialog recognition" checkbox: new jobs write `<name>_roles.txt`,
-    /// split into one paragraph per speaker turn.
-    @Published var dialogMode = false {
+    /// The mode last chosen in a file's card: files added next are transcribed
+    /// by speaker (`<name>_roles.txt`) when it is on. There is no separate
+    /// default setting — the card is the only place the choice is made.
+    @Published private(set) var dialogMode = false {
         didSet {
             UserDefaults.standard.set(dialogMode, forKey: Self.dialogModeKey)
         }
     }
 
+    /// The model last chosen in a file's card, for files added next; nil is
+    /// the active model.
+    @Published private(set) var defaultModelID: String? {
+        didSet {
+            UserDefaults.standard.set(defaultModelID, forKey: Self.defaultModelKey)
+        }
+    }
+
     static let outputDirectoryKey = "transcriptOutputDirectory"
     static let dialogModeKey = "fileTranscription.dialogMode"
+    static let defaultModelKey = "fileTranscription.modelID"
 
     /// Files this large are refused before decoding. `AudioFileDecoder` builds
     /// an `AVAudioPCMBuffer` over the whole file at its source rate and channel
@@ -114,9 +126,6 @@ final class FileTranscriptionQueue: ObservableObject {
     /// `whisper_full` and by the diarization helper's watcher. Set by a second
     /// Stop (for good) or by a restart (for that one job).
     private let cancelCurrent = AtomicFlag()
-    /// The job to queue again, with the current settings, once its
-    /// cancellation lands.
-    private var restartJobID: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var runner: Task<Void, Never>?
 
@@ -134,6 +143,7 @@ final class FileTranscriptionQueue: ObservableObject {
             self.outputDirectory = URL(fileURLWithPath: path, isDirectory: true)
         }
         self.dialogMode = UserDefaults.standard.bool(forKey: Self.dialogModeKey)
+        self.defaultModelID = UserDefaults.standard.string(forKey: Self.defaultModelKey)
 
         sessionManager.$state
             .sink { [weak self] state in self?.micBusy.value = (state != .idle) }
@@ -157,10 +167,29 @@ final class FileTranscriptionQueue: ObservableObject {
     var unsavedJobs: [Job] { jobs.filter { $0.status == .failed && $0.text?.isEmpty == false } }
 
     /// The mode a job queued right now gets. Dialog mode needs macOS 14; on
-    /// older systems the checkbox is disabled, and a value synced from a newer
-    /// Mac must not turn every job into a failure.
+    /// older systems it cannot be chosen, and a value synced from a newer Mac
+    /// must not turn every job into a failure.
     var currentMode: TranscriptMode {
         dialogMode && DiarizationClient.isSupportedSystem ? .roles : .plain
+    }
+
+    /// The model a file added right now gets; nil is the active model.
+    var currentModelID: String? {
+        let downloaded = Set(modelManager.models.filter { $0.isDownloaded }.map { $0.id })
+        return Self.resolveModelID(defaultModelID, downloaded: downloaded)
+    }
+
+    /// The remembered model if it can still run; otherwise nil, which means
+    /// the active model — a deleted model must not fail every file added next.
+    static func resolveModelID(_ preferred: String?, downloaded: Set<String>) -> String? {
+        guard let preferred, downloaded.contains(preferred) else { return nil }
+        return preferred
+    }
+
+    /// The latest job for a file, running or finished.
+    func job(for url: URL) -> Job? {
+        let path = url.standardizedFileURL.path
+        return jobs.last { $0.url.standardizedFileURL.path == path }
     }
 
     /// Where a given file's transcript should go.
@@ -170,17 +199,23 @@ final class FileTranscriptionQueue: ObservableObject {
 
     // MARK: - Enqueueing
 
-    func enqueue(urls: [URL]) {
-        enqueue(urls: urls, mode: currentMode)
+    /// Files added by drop, the Add button or Finder, with the last choice.
+    /// - Returns: the files accepted, in the form the Files list keys them by.
+    @discardableResult
+    func enqueue(urls: [URL]) -> [URL] {
+        enqueue(urls: urls, mode: currentMode, modelID: currentModelID)
     }
 
-    /// "Transcribe again" on a file from the transcribed list, with the
-    /// current checkbox.
+    /// "Transcribe" in a file's card. The choice becomes the default for files
+    /// added next.
     /// - Parameter modelID: model to run this time; nil keeps the active one.
-    func rerun(_ url: URL, modelID: String? = nil) {
+    func rerun(_ url: URL, mode: TranscriptMode, modelID: String?) {
         // A call recording is transcribed as a call again: its channels are
         // what tell the speakers apart.
-        enqueue(urls: [url], mode: registry.mode(for: url) ?? currentMode, modelID: modelID)
+        let mode = registry.mode(for: url) ?? mode
+        if mode != .call { dialogMode = mode == .roles }
+        defaultModelID = modelID
+        enqueue(urls: [url], mode: mode, modelID: modelID)
     }
 
     /// A finished call recording: two channels, the user and the other side.
@@ -188,16 +223,17 @@ final class FileTranscriptionQueue: ObservableObject {
         enqueue(urls: [url], mode: .call)
     }
 
-    private func enqueue(urls: [URL], mode: TranscriptMode, modelID: String? = nil) {
+    @discardableResult
+    private func enqueue(urls: [URL], mode: TranscriptMode, modelID: String? = nil) -> [URL] {
         let accepted = urls.compactMap(Self.acceptableAudioURL)
-        guard !accepted.isEmpty else { return }
+        guard !accepted.isEmpty else { return [] }
 
         // The same file in the same mode already waiting or running adds
         // nothing. A finished row makes way instead, so queuing a file again
         // transcribes it again.
         let busy = Set(jobs.filter { !$0.status.isFinished && $0.mode == mode }.map { $0.url.standardizedFileURL })
         let fresh = accepted.filter { !busy.contains($0.standardizedFileURL) }
-        guard !fresh.isEmpty else { return }
+        guard !fresh.isEmpty else { return accepted }
 
         let freshSet = Set(fresh.map { $0.standardizedFileURL })
         jobs.removeAll { $0.status.isFinished && $0.mode == mode && freshSet.contains($0.url.standardizedFileURL) }
@@ -208,6 +244,7 @@ final class FileTranscriptionQueue: ObservableObject {
 
         checkWriteAccess(for: fresh)
         start()
+        return accepted
     }
 
     /// Reject folders, bundles, and anything the decoder can't open. Files with
@@ -354,35 +391,30 @@ final class FileTranscriptionQueue: ObservableObject {
         }
     }
 
-    /// Run a job again with the current settings — typically after flipping
-    /// dialog mode once it had started. A running job is interrupted and takes
-    /// its place again at the same position; the rest of the queue is untouched.
-    func stopAndRestart(_ jobID: UUID) {
+    /// Stop one file: a waiting job never starts, a running one is
+    /// interrupted. The rest of the queue is untouched.
+    func cancel(_ jobID: UUID) {
         guard let job = self[jobID] else { return }
         switch job.status {
         case .pending:
-            update(jobID) {
-                $0.mode = restartMode(for: $0.mode)
-                $0.vocabulary = vocabularies.active
-            }
+            finish(jobID, .cancelled)
         case .waitingForMic, .decoding, .diarizing, .transcribing:
-            restartJobID = jobID
             cancelCurrent.value = true
-            flog("FileQueue: restarting \(job.url.lastPathComponent) as \(currentMode.rawValue)")
+            flog("FileQueue: cancelling \(job.url.lastPathComponent)")
         case .saved, .savedToFallback, .empty, .failed, .cancelled:
-            enqueue(urls: [job.url], mode: restartMode(for: job.mode), modelID: job.modelID)
+            break
         }
-    }
-
-    /// A call recording stays a call: its channels tell the speakers apart,
-    /// and the dialog checkbox does not apply to it.
-    private func restartMode(for mode: TranscriptMode) -> TranscriptMode {
-        mode == .call ? .call : currentMode
     }
 
     func clearFinished() {
         jobs.removeAll { $0.status.isFinished }
         if jobs.isEmpty { blockedDirectories = [] }
+    }
+
+    /// "Remove from the list" for one file: its finished jobs go with it.
+    func forgetFinished(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        jobs.removeAll { $0.status.isFinished && $0.url.standardizedFileURL.path == path }
     }
 
     private func start() {
@@ -408,8 +440,8 @@ final class FileTranscriptionQueue: ObservableObject {
                 return
             }
             await process(next.id)
-            // A restart cancels only the job it targets. After a second Stop
-            // the flag stays up and the loop ends on `stopRequested` anyway.
+            // A single cancel stops only the job in flight. After a second
+            // Stop the flag stays up and the loop ends on `stopRequested` anyway.
             if !abortRequested { cancelCurrent.value = false }
         }
     }
@@ -433,7 +465,7 @@ final class FileTranscriptionQueue: ObservableObject {
             }
         }
         if cancelCurrent.value {
-            finishCancelled(jobID)
+            finish(jobID, .cancelled)
             return
         }
 
@@ -483,7 +515,7 @@ final class FileTranscriptionQueue: ObservableObject {
 
         // Decoding can't be interrupted, but there is no point starting whisper.
         if cancelCurrent.value {
-            finishCancelled(jobID)
+            finish(jobID, .cancelled)
             return
         }
 
@@ -503,7 +535,7 @@ final class FileTranscriptionQueue: ObservableObject {
                     shouldCancel: { cancel.value }
                 )
             } catch is CancellationError {
-                finishCancelled(jobID)
+                finish(jobID, .cancelled)
                 return
             } catch {
                 flog("FileQueue: diarization failed for \(url.lastPathComponent): \(error)")
@@ -531,7 +563,7 @@ final class FileTranscriptionQueue: ObservableObject {
             )
         } catch is CancellationError {
             flog("FileQueue: transcription of \(url.lastPathComponent) interrupted")
-            finishCancelled(jobID)
+            finish(jobID, .cancelled)
             return
         } catch {
             flog("FileQueue: transcribe failed for \(url.lastPathComponent): \(error)")
@@ -588,7 +620,7 @@ final class FileTranscriptionQueue: ObservableObject {
             return
         }
         if cancelCurrent.value {
-            finishCancelled(jobID)
+            finish(jobID, .cancelled)
             return
         }
         flog("FileQueue: call \(url.lastPathComponent): "
@@ -616,7 +648,7 @@ final class FileTranscriptionQueue: ObservableObject {
                     shouldCancel: { cancel.value }
                 )
             } catch is CancellationError {
-                finishCancelled(jobID)
+                finish(jobID, .cancelled)
                 return
             } catch {
                 flog("FileQueue: diarizing the other side of \(url.lastPathComponent) failed, keeping one voice: \(error)")
@@ -648,7 +680,7 @@ final class FileTranscriptionQueue: ObservableObject {
             }
         } catch is CancellationError {
             flog("FileQueue: transcription of call \(url.lastPathComponent) interrupted")
-            finishCancelled(jobID)
+            finish(jobID, .cancelled)
             return
         } catch {
             flog("FileQueue: transcribe failed for call \(url.lastPathComponent): \(error)")
@@ -772,19 +804,6 @@ final class FileTranscriptionQueue: ObservableObject {
         }
     }
 
-    /// A cancelled job that `stopAndRestart` asked for comes back as a fresh
-    /// pending job in the same place, with the settings in force now.
-    private func finishCancelled(_ jobID: UUID) {
-        guard restartJobID == jobID,
-              let index = jobs.firstIndex(where: { $0.id == jobID }) else {
-            finish(jobID, .cancelled)
-            return
-        }
-        restartJobID = nil
-        let url = jobs[index].url
-        jobs[index] = Job(url: url, mode: restartMode(for: jobs[index].mode),
-                          vocabulary: vocabularies.active, modelID: jobs[index].modelID)
-    }
 
     // MARK: - Manual saving
 

@@ -1,21 +1,22 @@
 #!/usr/bin/env swift
-// Generates the menubar icons: a raven's head in profile, beak closed (idle) and
-// beak open (recording).
+// Generates the menubar icons: a raven's head in profile, beak closed (idle),
+// beak open (recording), and beak closed with a wide eye (processing).
 //
 //     swift scripts/generate-status-bar-icons.swift
 //
-// Writes StatusBarIcon{,Open}{,@2x}.png into macOS/Resources — template images,
+// Writes StatusBarIcon{,Open,Processing}{,@2x}.png into macOS/Resources — template images,
 // black on transparent, 24×18 pt.
 //
 // The outline is measured off a canonical raven profile silhouette (508×382),
 // point by point, in that image's pixel coordinates with y down; the icon crops
-// it to x 32…448, y 70…382, keeping its 4:3 frame with the neck running off the
-// bottom and the right edge. A square frame would leave either a tiny head or a
-// neck two thirds of the icon tall.
+// it to x 32…448, y 70…382, keeping its 4:3 frame. A square frame would leave
+// either a tiny head or a neck two thirds of the icon tall. The neck ends in
+// feathers inside the frame rather than running off it: cut by the frame, it read
+// as a square block in the bottom right corner.
 //
-// Head and eye are the same shapes in both states. Only the beak differs: the
-// upper mandible stays where it is — the skull does not move — and the lower jaw
-// drops about the corner of the mouth.
+// The head is the same shape in every state. Listening, the upper mandible stays
+// where it is — the skull does not move — and the lower jaw drops about the
+// corner of the mouth. Processing, the eye is twice as wide.
 
 import AppKit
 
@@ -56,26 +57,52 @@ let crownAndBack = [
     p(480, 239), p(500, 263), p(540, 305),
 ]
 
-/// The front of the neck, from below the frame up to the chin. It widens all the
-/// way down: a raven's neck is thick and runs into chest and shoulders.
+/// The front of the neck, from the bottom of the frame up to the chin. It widens
+/// all the way down: a raven's neck is thick and runs into chest and shoulders.
 let neckFront = [
-    p(252, 420), p(247, 370), p(242, 340), p(237, 310), p(232, 280), p(228, 265),
+    p(247, 370), p(242, 340), p(237, 310), p(232, 280), p(228, 265),
     p(220, 235), p(212, 220), p(198, 205),
 ]
 
+/// Where the neck ends: four feathers laid from the back of the neck down to the
+/// throat, each a rounded vane ending in a point that hangs down and a little
+/// back, the way hackles lie. The tips are doubled so they stay points; more
+/// feathers than four merge into a saw edge at 18 pt.
+let feathers: [CGPoint] = {
+    let start = p(446, 184), end = p(250, 340)
+    let count = 4
+    func along(_ t: CGFloat) -> CGPoint {
+        p(start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t)
+    }
+    var points: [CGPoint] = []
+    for index in 0..<count {
+        let t0 = CGFloat(index) / CGFloat(count)
+        let width = 1 / CGFloat(count)
+        let vane = along(t0 + width * 0.45)
+        let base = along(t0 + width * 0.8)
+        let tip = p(base.x + 18, base.y + 56)
+        points += [along(t0), p(vane.x + 22, vane.y + 29), tip, tip]
+    }
+    return points
+}()
+
 /// The head's edge under the bill sits well inside the bill, which is drawn over
 /// it, so the two never meet on an edge antialiasing would leave a seam along.
-let head = spline(
-    [p(190, 106), p(200, 101)]
-        + crownAndBack
-        + [p(560, 330), p(560, 330), p(560, 440), p(560, 440), p(252, 440), p(252, 440)]
-        + neckFront
-        + [p(190, 199), p(190, 199), p(190, 106)]
-)
+let head: CGPath = {
+    let back: [CGPoint] = crownAndBack.filter { $0.x <= 440 }
+    let outline: [CGPoint] = [p(190, 106), p(200, 101)] + back + feathers + neckFront
+    return spline(outline + [p(190, 199), p(190, 199), p(190, 106)])
+}()
 
 /// A raven's eye is about a quarter of the head's depth where it sits; smaller
 /// and it is gone at 18 pt.
-let eye = CGPath(ellipseIn: CGRect(x: 254 - 16, y: 124 - 16, width: 32, height: 32), transform: nil)
+func circle(radius: CGFloat, center: CGPoint) -> CGPath {
+    CGPath(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius,
+                             width: radius * 2, height: radius * 2), transform: nil)
+}
+let eye = circle(radius: 16, center: p(254, 124))
+/// Twice as wide, and moved back and down so it clears the crown.
+let wideEye = circle(radius: 32, center: p(260, 134))
 
 // MARK: - Beak
 
@@ -115,7 +142,19 @@ let openBeak: CGPath = {
 
 // MARK: - Output
 
-func render(open: Bool, scale: Int) -> Data {
+enum Pose: CaseIterable {
+    case idle, listening, processing
+
+    var fileName: String {
+        switch self {
+        case .idle: return "StatusBarIcon"
+        case .listening: return "StatusBarIconOpen"
+        case .processing: return "StatusBarIconProcessing"
+        }
+    }
+}
+
+func render(_ pose: Pose, scale: Int) -> Data {
     let width = Int(outputSize.width) * scale
     let height = Int(outputSize.height) * scale
     let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
@@ -129,12 +168,12 @@ func render(open: Bool, scale: Int) -> Data {
     context.setFillColor(NSColor.black.cgColor)
     // One shape at a time: overlapping shapes drawn in opposite directions
     // cancel out under a single winding fill.
-    for shape in [head, open ? openBeak : closedBeak] {
+    for shape in [head, pose == .listening ? openBeak : closedBeak] {
         context.addPath(shape)
         context.fillPath()
     }
     context.setBlendMode(.clear)
-    context.addPath(eye)
+    context.addPath(pose == .processing ? wideEye : eye)
     context.fillPath()
 
     let rep = NSBitmapImageRep(cgImage: context.makeImage()!)
@@ -146,10 +185,10 @@ let resources = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent()
     .appendingPathComponent("macOS/Resources")
 
-for open in [false, true] {
+for pose in Pose.allCases {
     for scale in [1, 2] {
-        let name = "StatusBarIcon\(open ? "Open" : "")\(scale == 2 ? "@2x" : "").png"
-        try! render(open: open, scale: scale).write(to: resources.appendingPathComponent(name))
+        let name = "\(pose.fileName)\(scale == 2 ? "@2x" : "").png"
+        try! render(pose, scale: scale).write(to: resources.appendingPathComponent(name))
         print("wrote macOS/Resources/\(name)")
     }
 }

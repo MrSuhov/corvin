@@ -43,7 +43,7 @@ final class StatusBarController: NSObject {
         super.init()
 
         if let button = statusItem.button {
-            button.image = Self.statusBarIcon(open: false, badged: false)
+            button.image = Self.statusBarIcon(.idle, badged: false)
             badge.wantsLayer = true
             badge.isHidden = true
             badge.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
@@ -100,9 +100,34 @@ final class StatusBarController: NSObject {
         buildMenu()
     }
 
-    /// The raven, beak closed or open — see `scripts/generate-status-bar-icons.swift`.
-    private static func loadStatusBarIcon(open: Bool) -> NSImage? {
-        let name = open ? "StatusBarIconOpen" : "StatusBarIcon"
+    /// The raven's pose for a session state — see `scripts/generate-status-bar-icons.swift`.
+    private enum RavenPose {
+        /// Beak closed.
+        case idle
+        /// Beak open.
+        case listening
+        /// Beak closed, eye wide.
+        case processing
+
+        init(_ state: SessionState) {
+            switch state {
+            case .recording: self = .listening
+            case .transcribing: self = .processing
+            default: self = .idle
+            }
+        }
+
+        var imageName: String {
+            switch self {
+            case .idle: return "StatusBarIcon"
+            case .listening: return "StatusBarIconOpen"
+            case .processing: return "StatusBarIconProcessing"
+            }
+        }
+    }
+
+    private static func loadStatusBarIcon(_ pose: RavenPose) -> NSImage? {
+        let name = pose.imageName
         // `image(forResource:)` picks up the @2x file too; loading the .png by
         // URL would give one blurry representation on a Retina screen.
         if let image = Bundle.main.image(forResource: name) ?? NSImage(named: name) {
@@ -120,8 +145,8 @@ final class StatusBarController: NSObject {
     /// The status bar icon, with room made for the update badge in its top-right
     /// corner: a transparent ring punched where the green dot (`badge`) goes, so
     /// the dot stays legible wherever it overlaps the glyph.
-    private static func statusBarIcon(open: Bool, badged: Bool) -> NSImage? {
-        guard let base = loadStatusBarIcon(open: open) else { return nil }
+    private static func statusBarIcon(_ pose: RavenPose, badged: Bool) -> NSImage? {
+        guard let base = loadStatusBarIcon(pose) else { return nil }
         guard badged else { return base }
 
         let size = base.size
@@ -171,8 +196,9 @@ final class StatusBarController: NSObject {
         guard let button = statusItem.button else { return }
 
         let badged = pendingUpdateVersion != nil
-        // The raven opens its beak while it listens; that replaces the red tint.
-        button.image = Self.statusBarIcon(open: state == .recording, badged: badged)
+        // The raven opens its beak while it listens, which replaces the red tint,
+        // and widens its eye while it thinks.
+        button.image = Self.statusBarIcon(RavenPose(state), badged: badged)
         placeBadge(in: button, visible: badged)
 
         switch state {

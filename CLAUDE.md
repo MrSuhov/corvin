@@ -28,9 +28,10 @@ make project       # Generate Xcode project via XcodeGen
   `corvin-diarize` helper in `Contents/Helpers`)
 - `scripts/publish-models-manifest.sh` — regenerate and publish `models.json` (whisper models plus
   the `diarization` section, pinned to `DIARIZATION_REVISION` in `generate-models-manifest.py`)
-- `scripts/generate-status-bar-icons.swift` — the menubar raven, beak closed (idle) and open
-  (recording), 24×18 pt template PNGs into `macOS/Resources`; its outline is measured off a canonical
-  raven profile. The update badge is a green view over the button, not part of the icon — a template
+- `scripts/generate-status-bar-icons.swift` — the menubar raven, beak closed (idle), open
+  (recording), and closed with the eye twice as wide (transcribing), 24×18 pt template PNGs into
+  `macOS/Resources`; its outline is measured off a canonical raven profile, and the neck ends in
+  feathers inside the frame — cut by the frame it read as a square. The update badge is a green view over the button, not part of the icon — a template
   image is one colour, and a coloured icon would lose the state tints and light/dark adaptation
 
 ### Releasing (macOS)

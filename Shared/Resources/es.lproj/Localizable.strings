@@ -511,3 +511,13 @@
 "files.stopAll" = "Detener todo";
 "files.defaults.hint" = "Los próximos archivos que añadas se transcribirán igual.";
 "models.test.title" = "Probar el modelo activo";
+
+/* Update check, answered when the user asked for it */
+"menu.checkUpdates.checking" = "Buscando actualizaciones…";
+"update.upToDate.title" = "Corvin está actualizado";
+"update.upToDate.message" = "Versión %@ (compilación %@). Todavía no hay nada más reciente.";
+"update.found.title" = "La versión %@ está disponible";
+"update.found.message" = "Corvin la descargará y se reiniciará.";
+"update.found.install" = "Actualizar";
+"update.later" = "Más tarde";
+"update.error.title" = "No se pudo buscar actualizaciones";

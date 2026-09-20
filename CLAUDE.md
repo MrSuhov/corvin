@@ -47,6 +47,13 @@ states, and only then commits and pushes `appcast.xml` — Sparkle reads it from
 the `v<version>` release with the notes and the DMG, marked Latest. The notes also become the
 release commit's body; `COMMIT_TRAILER` is appended to the commit only.
 
+`UpdaterService` drives Sparkle itself (no Sparkle UI: an accessory app's windows open behind
+everything). A scheduled probe — 15 s after launch, every 24 h, on wake — is silent and shows only
+the green badge on the menubar icon when a version is found. A check the **user** asked for always
+answers, in an alert: up to date, the version found (with Update / Later), or why the check failed;
+while it runs the menu item reads "Checking for updates…". Without that answer the menu item is
+indistinguishable from a dead button.
+
 Two kinds of GitHub release: `downloads` is Sparkle's bucket (`generate_appcast` takes one URL
 prefix, so every DMG and delta sits under that tag, listed by name — GitHub has no other order for
 a release's files), and one `v<version>` release per version for people, listed newest first.

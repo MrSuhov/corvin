@@ -25,6 +25,9 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate, SPUU
     /// Non-nil while an update is being fetched or installed.
     @Published private(set) var progress: Progress?
 
+    /// A check is in flight, for the menu item's title.
+    @Published private(set) var isProbing = false
+
     enum Progress: Equatable {
         case starting
         case downloading(fraction: Double?)
@@ -41,6 +44,10 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate, SPUU
 
     private var updater: SPUUpdater!
     private var probeTimer: Timer?
+
+    /// The check running now was asked for by the user, so its answer is shown.
+    /// A scheduled probe stays silent: its only sign is the badge on the icon.
+    private var userAsked = false
 
     private var expectedDownloadBytes: UInt64 = 0
     private var receivedDownloadBytes: UInt64 = 0
@@ -102,17 +109,23 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate, SPUU
     /// `SPUUpdaterDelegate` callbacks below.
     func probeForUpdate() {
         guard updater.canCheckForUpdates else {
+            // A check is already in flight. Its result answers the user too —
+            // dropping the request here is what makes the menu item look dead.
             flog("updater: probe skipped, a session is already running")
+            if userAsked { DispatchQueue.main.async { self.isProbing = true } }
             return
         }
         flog("updater: probing appcast")
+        if userAsked { DispatchQueue.main.async { self.isProbing = true } }
         updater.checkForUpdateInformation()
     }
 
     // MARK: - Menu actions
 
-    /// Wired to "Проверить обновления…" — silent, no window, no app activation.
+    /// Wired to "Проверить обновления…". A scheduled probe says nothing when
+    /// there is no update; this one has to answer, or the menu item looks dead.
     @objc func checkForUpdatesInBackground(_ sender: Any?) {
+        userAsked = true
         probeForUpdate()
     }
 
@@ -144,7 +157,13 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate, SPUU
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         flog("updater: found version \(item.displayVersionString)")
-        DispatchQueue.main.async { self.pendingUpdateVersion = item.displayVersionString }
+        DispatchQueue.main.async {
+            self.pendingUpdateVersion = item.displayVersionString
+            self.isProbing = false
+            guard self.userAsked else { return }
+            self.userAsked = false
+            self.offerUpdate(item.displayVersionString)
+        }
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
@@ -152,8 +171,55 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate, SPUU
         DispatchQueue.main.async {
             self.pendingUpdateVersion = nil
             self.progress = nil
+            self.isProbing = false
+            guard self.userAsked else { return }
+            self.userAsked = false
+            self.showUpToDate()
         }
     }
+
+    // MARK: - Answering the user
+
+    /// The menu closes on the click, so the answer cannot live in the menu
+    /// item. An alert is the one surface an accessory app can bring forward.
+    private func alert(_ message: String, informative: String) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = informative
+        return alert
+    }
+
+    private func present(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        // LSUIElement app: without this the alert opens behind everything and
+        // there is no Dock icon to bring it back.
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal()
+    }
+
+    private func showUpToDate() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        let alert = self.alert("update.upToDate.title".localized,
+                               informative: "update.upToDate.message".localized(with: version, build))
+        alert.addButton(withTitle: "common.close".localized)
+        _ = present(alert)
+    }
+
+    private func offerUpdate(_ version: String) {
+        let alert = self.alert("update.found.title".localized(with: version),
+                               informative: "update.found.message".localized)
+        alert.addButton(withTitle: "update.found.install".localized)
+        alert.addButton(withTitle: "update.later".localized)
+        guard present(alert) == .alertFirstButtonReturn else { return }
+        installUpdate(nil)
+    }
+
+    private func showCheckFailed(_ error: Error) {
+        let alert = self.alert("update.error.title".localized, informative: error.localizedDescription)
+        alert.addButton(withTitle: "common.close".localized)
+        _ = present(alert)
+    }
+
 
     // MARK: - SPUUserDriver
 
@@ -186,6 +252,11 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate, SPUU
         DispatchQueue.main.async {
             self.pendingUpdateVersion = nil
             self.progress = nil
+            self.isProbing = false
+            if self.userAsked {
+                self.userAsked = false
+                self.showUpToDate()
+            }
         }
         acknowledgement()
     }
@@ -193,6 +264,13 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate, SPUU
     func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
         flog("updater: ERROR \(error.localizedDescription)")
         setProgress(nil)
+        DispatchQueue.main.async {
+            self.isProbing = false
+            if self.userAsked {
+                self.userAsked = false
+                self.showCheckFailed(error)
+            }
+        }
         acknowledgement()
     }
 
@@ -241,7 +319,13 @@ final class UpdaterService: NSObject, ObservableObject, SPUUpdaterDelegate, SPUU
 
     func showUpdateInFocus() {}
 
+    /// The end of any session, however it ended: nothing is owed to the user
+    /// after it, and a stale flag would answer a later scheduled probe.
     func dismissUpdateInstallation() {
         setProgress(nil)
+        DispatchQueue.main.async {
+            self.userAsked = false
+            self.isProbing = false
+        }
     }
 }

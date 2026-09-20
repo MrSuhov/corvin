@@ -21,6 +21,7 @@ final class StatusBarController: NSObject {
     /// the icon and the "Обновить" menu item.
     private var pendingUpdateVersion: String?
     private var updateProgress: UpdaterService.Progress?
+    private var isProbingUpdate = false
     private var lastState: SessionState = .idle
     private var cancellables = Set<AnyCancellable>()
     /// The update badge, green. A view over the button rather than part of the
@@ -66,6 +67,15 @@ final class StatusBarController: NSObject {
             .sink { [weak self] progress in
                 guard let self = self, self.updateProgress != progress else { return }
                 self.updateProgress = progress
+                self.updateState(self.lastState)
+            }
+            .store(in: &cancellables)
+
+        UpdaterService.shared.$isProbing
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] probing in
+                guard let self = self, self.isProbingUpdate != probing else { return }
+                self.isProbingUpdate = probing
                 self.updateState(self.lastState)
             }
             .store(in: &cancellables)
@@ -310,7 +320,10 @@ final class StatusBarController: NSObject {
         // reports progress and is not clickable, since the update has no UI of
         // its own to show it in.
         let updates: NSMenuItem
-        if let progress = updateProgress {
+        if isProbingUpdate {
+            updates = NSMenuItem(title: "menu.checkUpdates.checking".localized, action: nil, keyEquivalent: "")
+            updates.isEnabled = false
+        } else if let progress = updateProgress {
             updates = NSMenuItem(title: Self.progressTitle(progress), action: nil, keyEquivalent: "")
             updates.isEnabled = false
         } else if let version = pendingUpdateVersion {

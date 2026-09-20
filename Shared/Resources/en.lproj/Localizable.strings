@@ -511,3 +511,13 @@
 "files.stopAll" = "Stop All";
 "files.defaults.hint" = "Files you add next are transcribed the same way.";
 "models.test.title" = "Try the active model";
+
+/* Update check, answered when the user asked for it */
+"menu.checkUpdates.checking" = "Checking for updates…";
+"update.upToDate.title" = "Corvin is up to date";
+"update.upToDate.message" = "Version %@ (build %@). There is nothing newer yet.";
+"update.found.title" = "Version %@ is available";
+"update.found.message" = "Corvin downloads it and restarts itself.";
+"update.found.install" = "Update";
+"update.later" = "Later";
+"update.error.title" = "Could not check for updates";

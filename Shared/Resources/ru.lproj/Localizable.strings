@@ -511,3 +511,13 @@
 "files.stopAll" = "Остановить все";
 "files.defaults.hint" = "Следующие добавленные файлы распознаются так же.";
 "models.test.title" = "Проверить активную модель";
+
+/* Update check, answered when the user asked for it */
+"menu.checkUpdates.checking" = "Проверка обновлений…";
+"update.upToDate.title" = "Установлена последняя версия";
+"update.upToDate.message" = "Версия %@ (сборка %@). Ничего новее пока нет.";
+"update.found.title" = "Доступна версия %@";
+"update.found.message" = "Corvin скачает её и перезапустится.";
+"update.found.install" = "Обновить";
+"update.later" = "Позже";
+"update.error.title" = "Не удалось проверить обновления";

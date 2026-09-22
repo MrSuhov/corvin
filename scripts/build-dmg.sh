@@ -23,10 +23,14 @@ echo "[1b/5] Building opus/opusfile universal libraries..."
 echo "[2/4] Building Corvin universal binary..."
 
 cd "$PROJECT_DIR"
-rm -f "$PROJECT_DIR/.build/apple/Products/Release/Corvin"
+# Ask SwiftPM where it puts release products rather than hardcoding a path: the
+# classic build system used .build/apple/Products/Release, Xcode 26+'s default
+# build system uses .build/out/Products/Release.
+BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+rm -f "$BIN_DIR/Corvin"
 swift build -c release --arch arm64 --arch x86_64 2>&1 | grep -E "error:|warning:|Build complete" || true
 
-BINARY="$PROJECT_DIR/.build/apple/Products/Release/Corvin"
+BINARY="$BIN_DIR/Corvin"
 if [ ! -f "$BINARY" ]; then
     echo "ERROR: Build failed"
     exit 1
@@ -38,8 +42,9 @@ echo "  $ARCHS"
 # Step 2b: speaker-diarization helper. A separate package because FluidAudio
 # needs macOS 14 and Corvin targets 11; the app runs it only on 14+.
 echo "[2b/4] Building corvin-diarize helper..."
+DIARIZE_BIN_DIR="$(cd "$PROJECT_DIR/Helpers/Diarizer" && swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
 (cd "$PROJECT_DIR/Helpers/Diarizer" && swift build -c release --arch arm64 --arch x86_64 2>&1 | grep -E "error:|Build complete" || true)
-DIARIZE_BINARY="$PROJECT_DIR/Helpers/Diarizer/.build/apple/Products/Release/corvin-diarize"
+DIARIZE_BINARY="$DIARIZE_BIN_DIR/corvin-diarize"
 if [ ! -f "$DIARIZE_BINARY" ]; then
     echo "ERROR: corvin-diarize build failed"
     exit 1

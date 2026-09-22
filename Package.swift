@@ -1,5 +1,16 @@
 // swift-tools-version:5.9
 import PackageDescription
+import Foundation
+
+// Absolute path to the package directory. The vendored whisper.cpp/opus headers
+// and static libs live under `vendor/` and are referenced below by absolute
+// path. Relative `-I../../vendor` / `-Ivendor` flags resolve against the
+// compiler's working directory, which the classic SwiftPM build system set to
+// the package root but Xcode 26+'s build system sets to the parent directory —
+// so the COpus/CWhisper modules failed to find their headers. Absolute paths
+// build under both.
+let packageDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
+let vendorDir = "\(packageDir)/vendor"
 
 let package = Package(
     name: "Corvin",
@@ -17,8 +28,10 @@ let package = Package(
             path: "Sources/CWhisper",
             publicHeadersPath: "include",
             cSettings: [
-                .headerSearchPath("../../vendor/whisper.cpp/include"),
-                .headerSearchPath("../../vendor/whisper.cpp/ggml/include"),
+                .unsafeFlags([
+                    "-I\(vendorDir)/whisper.cpp/include",
+                    "-I\(vendorDir)/whisper.cpp/ggml/include",
+                ]),
             ]
         ),
         .target(
@@ -26,8 +39,10 @@ let package = Package(
             path: "Sources/COpus",
             publicHeadersPath: "include",
             cSettings: [
-                .headerSearchPath("../../vendor/opus-build/macos-universal/include"),
-                .headerSearchPath("../../vendor/opus-build/macos-universal/include/opus"),
+                .unsafeFlags([
+                    "-I\(vendorDir)/opus-build/macos-universal/include",
+                    "-I\(vendorDir)/opus-build/macos-universal/include/opus",
+                ]),
             ]
         ),
         .executableTarget(
@@ -55,22 +70,22 @@ let package = Package(
             ],
             swiftSettings: [
                 .unsafeFlags([
-                    "-Xcc", "-I../../vendor/whisper.cpp/include",
-                    "-Xcc", "-I../../vendor/whisper.cpp/ggml/include",
-                    "-Xcc", "-Ivendor/opus-build/macos-universal/include",
-                    "-Xcc", "-Ivendor/opus-build/macos-universal/include/opus",
+                    "-Xcc", "-I\(vendorDir)/whisper.cpp/include",
+                    "-Xcc", "-I\(vendorDir)/whisper.cpp/ggml/include",
+                    "-Xcc", "-I\(vendorDir)/opus-build/macos-universal/include",
+                    "-Xcc", "-I\(vendorDir)/opus-build/macos-universal/include/opus",
                 ])
             ],
             linkerSettings: [
                 .unsafeFlags([
-                    "-Lvendor/whisper.cpp/build-universal",
+                    "-L\(vendorDir)/whisper.cpp/build-universal",
                     "-lwhisper",
                     "-lggml",
                     "-lggml-base",
                     "-lggml-cpu",
                     "-lggml-metal",
                     "-lggml-blas",
-                    "-Lvendor/opus-build/macos-universal/lib",
+                    "-L\(vendorDir)/opus-build/macos-universal/lib",
                     "-lopusfile",
                     "-lopus",
                     "-logg",
@@ -105,10 +120,10 @@ let package = Package(
             // headers only the app target's own -Xcc flags point at.
             swiftSettings: [
                 .unsafeFlags([
-                    "-Xcc", "-Ivendor/whisper.cpp/include",
-                    "-Xcc", "-Ivendor/whisper.cpp/ggml/include",
-                    "-Xcc", "-Ivendor/opus-build/macos-universal/include",
-                    "-Xcc", "-Ivendor/opus-build/macos-universal/include/opus",
+                    "-Xcc", "-I\(vendorDir)/whisper.cpp/include",
+                    "-Xcc", "-I\(vendorDir)/whisper.cpp/ggml/include",
+                    "-Xcc", "-I\(vendorDir)/opus-build/macos-universal/include",
+                    "-Xcc", "-I\(vendorDir)/opus-build/macos-universal/include/opus",
                 ])
             ]
         ),

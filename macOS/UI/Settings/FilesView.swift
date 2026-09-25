@@ -399,6 +399,7 @@ struct FileDetail: View {
     @EnvironmentObject var fileQueue: FileTranscriptionQueue
     @EnvironmentObject var modelManager: ModelManager
     @EnvironmentObject var diarizationModels: DiarizationModelStore
+    @EnvironmentObject var vocabularies: VocabularyStore
 
     @State private var mode: TranscriptMode = .plain
     @State private var selectedModelID: String?
@@ -546,6 +547,14 @@ struct FileDetail: View {
             }
 
             modelDownload
+
+            // The dictionary is chosen above the list, for every file; say
+            // when this file's model is going to ignore it.
+            if vocabularies.activeID != nil,
+               let model = modelManager.models.first(where: { $0.id == selectedModelID }),
+               !model.supportsPrompt {
+                caption("files.vocabulary.unsupported".localized, color: .secondary)
+            }
 
             if let downloadError {
                 caption(downloadError, color: .red)

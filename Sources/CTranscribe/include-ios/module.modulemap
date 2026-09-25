@@ -1,0 +1,5 @@
+module CTranscribe {
+    header "shim.h"
+    // Linked and embedded as TranscribeCpp.xcframework (project.yml).
+    export *
+}

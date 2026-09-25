@@ -549,7 +549,7 @@ final class FileTranscriptionQueue: ObservableObject {
             $0.progress = .none
         }
 
-        let prompt = await fittedPrompt(for: vocabulary)
+        let prompt = await fittedPrompt(for: vocabulary, modelID: modelID)
 
         let busy = micBusy
         let result: TimedTranscriptionResult
@@ -659,7 +659,7 @@ final class FileTranscriptionQueue: ObservableObject {
             $0.status = .transcribing
             $0.progress = .none
         }
-        let prompt = await fittedPrompt(for: vocabulary)
+        let prompt = await fittedPrompt(for: vocabulary, modelID: modelID)
         let busy = micBusy
         let parts = heard.filter { $0 }.count
         var words: [[TimedWord]] = [[], []]
@@ -716,12 +716,14 @@ final class FileTranscriptionQueue: ObservableObject {
     }
 
     /// The job's vocabulary as a whisper prompt, trimmed to what fits.
-    private func fittedPrompt(for vocabulary: Vocabulary?) async -> String? {
+    /// - Parameter modelID: the job's model, so the terms are counted in its
+    ///   tokens — and dropped for a model that takes no prompt (GigaAM).
+    private func fittedPrompt(for vocabulary: Vocabulary?, modelID: String?) async -> String? {
         guard let terms = vocabulary?.terms, !terms.isEmpty else { return nil }
         let engine = self.engine
         do {
             let fitted = try await Task.detached(priority: .utility) {
-                try engine.fitPrompt(terms: terms)
+                try engine.fitPrompt(terms: terms, modelID: modelID)
             }.value
             flog("FileQueue: vocabulary '\(vocabulary?.name ?? "")': \(fitted.used) of \(terms.count) terms fit the prompt")
             return fitted.prompt

@@ -34,6 +34,16 @@ let package = Package(
                 ]),
             ]
         ),
+        // transcribe.cpp (GigaAM): a dylib with its ggml hidden inside, so it
+        // cannot collide with whisper.cpp's static ggml.
+        .target(
+            name: "CTranscribe",
+            path: "Sources/CTranscribe",
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags(["-I\(vendorDir)/transcribe.cpp/include"]),
+            ]
+        ),
         .target(
             name: "COpus",
             path: "Sources/COpus",
@@ -49,13 +59,14 @@ let package = Package(
             name: "Corvin",
             dependencies: [
                 "CWhisper",
+                "CTranscribe",
                 "COpus",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: ".",
             exclude: [
                 "vendor", "build", "scripts", "docs", "logo",
-                "Sources/CWhisper",
+                "Sources/CWhisper", "Sources/CTranscribe",
                 "iOS",  "CorvinKeyboard", "Tests",
                 "macOS/Bridge/README.md", "macOS/Bridge/whisper-bridge.h",
                 "macOS/Resources",
@@ -72,6 +83,7 @@ let package = Package(
                 .unsafeFlags([
                     "-Xcc", "-I\(vendorDir)/whisper.cpp/include",
                     "-Xcc", "-I\(vendorDir)/whisper.cpp/ggml/include",
+                    "-Xcc", "-I\(vendorDir)/transcribe.cpp/include",
                     "-Xcc", "-I\(vendorDir)/opus-build/macos-universal/include",
                     "-Xcc", "-I\(vendorDir)/opus-build/macos-universal/include/opus",
                 ])
@@ -85,6 +97,13 @@ let package = Package(
                     "-lggml-cpu",
                     "-lggml-metal",
                     "-lggml-blas",
+                    // Copied into Contents/Frameworks by build-dmg.sh, found
+                    // through the rpath below.
+                    "-L\(vendorDir)/transcribe.cpp/build-universal",
+                    "-ltranscribe",
+                    // Development runs (`swift build`, `swift test`) load the
+                    // dylib where it was built; build-dmg.sh deletes this rpath.
+                    "-Xlinker", "-rpath", "-Xlinker", "\(vendorDir)/transcribe.cpp/build-universal",
                     "-L\(vendorDir)/opus-build/macos-universal/lib",
                     "-lopusfile",
                     "-lopus",
@@ -122,6 +141,7 @@ let package = Package(
                 .unsafeFlags([
                     "-Xcc", "-I\(vendorDir)/whisper.cpp/include",
                     "-Xcc", "-I\(vendorDir)/whisper.cpp/ggml/include",
+                    "-Xcc", "-I\(vendorDir)/transcribe.cpp/include",
                     "-Xcc", "-I\(vendorDir)/opus-build/macos-universal/include",
                     "-Xcc", "-I\(vendorDir)/opus-build/macos-universal/include/opus",
                 ])

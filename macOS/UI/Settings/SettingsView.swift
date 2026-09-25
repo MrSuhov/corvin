@@ -151,6 +151,7 @@ struct GeneralSettingsView: View {
     @AppStorage(DictationSettings.realtimeKey) private var realtimeDictation = false
     @AppStorage("hotkeyKeyCode") private var hotkeyKeyCode = 63
     @State private var isRecordingHotkey = false
+    @EnvironmentObject var modelManager: ModelManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -191,6 +192,12 @@ struct GeneralSettingsView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if realtimeDictation, let model = modelManager.activeModel, !model.supportsStreaming {
+                Text("settings.general.realtime.unsupported".localized(with: model.name))
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Toggle("settings.general.copyToClipboard".localized, isOn: $copyToClipboard)
 
             Divider()
@@ -295,10 +302,47 @@ struct ModelSettingsView: View {
         VStack(spacing: 0) {
             ModelManagerView()
                 .environmentObject(modelManager)
+            if DiarizationClient.isSupportedSystem {
+                Divider()
+                DiarizationModelSection()
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+            }
             Divider()
             ModelTestView()
                 .padding()
         }
+    }
+}
+
+/// The speaker-diarization model, listed here as well as in the Files card
+/// that uses it: this tab is where people look for models.
+private struct DiarizationModelSection: View {
+    @EnvironmentObject var diarizationModels: DiarizationModelStore
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("models.diarization.title".localized)
+                    .font(.headline)
+                Text("models.diarization.subtitle".localized(with: sizeLabel))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                DiarizationModelsStatusView()
+            }
+            Spacer()
+            if diarizationModels.isInstalled && !diarizationModels.isDownloading {
+                Label("models.diarization.installed".localized, systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(.green)
+            }
+        }
+        .onAppear { diarizationModels.refresh() }
+    }
+
+    private var sizeLabel: String {
+        ByteCountFormatter.string(fromByteCount: diarizationModels.currentEntry.sizeBytes, countStyle: .file)
     }
 }
 

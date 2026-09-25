@@ -79,6 +79,15 @@ struct ModelRow: View {
                             .foregroundColor(.blue)
                             .clipShape(Capsule())
                     }
+                    if let languages = model.languagesLabel {
+                        Text(languages)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundColor(.orange)
+                            .clipShape(Capsule())
+                    }
                 }
                 Text("\(model.size) • \(model.quality.localized) • \(model.speed)")
                     .font(.caption)

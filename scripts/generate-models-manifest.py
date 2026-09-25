@@ -30,8 +30,11 @@ SCHEMA_VERSION = 1
 # Minimum app version able to load anything in this manifest. Bump per-model
 # below if a future ggml format needs a newer whisper.cpp than shipped clients.
 DEFAULT_MIN_APP_VERSION = "1.3.0"
+# Models another runtime loads. An older client would take a family-less entry
+# for whisper and hand a GGUF to whisper.cpp, so these are hidden from it.
+FAMILY_MIN_APP_VERSION = {"gigaam": "1.5.4"}
 
-HF_API = "https://huggingface.co/api/models/{repo}/tree/main?recursive=true"
+HF_API = "https://huggingface.co/api/models/{repo}/tree/{rev}?recursive=true"
 
 
 def fetch_json(url: str):
@@ -39,10 +42,11 @@ def fetch_json(url: str):
         return json.load(r)
 
 
-def lfs_index(repo: str) -> dict:
-    """path -> (sha256, size) for every LFS-backed file in a Hugging Face repo."""
+def lfs_index(repo: str, rev: str) -> dict:
+    """path -> (sha256, size) for every LFS-backed file in a Hugging Face repo
+    at `rev` — the revision the download URL resolves, so the hash matches."""
     try:
-        tree = fetch_json(HF_API.format(repo=repo))
+        tree = fetch_json(HF_API.format(repo=repo, rev=rev))
     except urllib.error.HTTPError as e:
         sys.exit(f"cannot read {repo} tree: HTTP {e.code}")
     out = {}
@@ -84,7 +88,10 @@ def parse_swift_catalogue() -> list:
         url = um.group(1).replace("\\(whisperURL)", whisper_url)
 
         chip = field("chipRequirement")
-        models.append({
+        family = (field("family") or ".whisper").split(".")[-1]
+        lm = re.search(r'languages:\s*\[([^\]]*)\]', block)
+        languages = re.findall(r'"([^"]+)"', lm.group(1)) if lm else None
+        entry = {
             "id": field("id"),
             "name": field("name"),
             "size": field("size"),
@@ -95,16 +102,23 @@ def parse_swift_catalogue() -> list:
             "recommended": field("recommended") == "true",
             "chipRequirement": None if chip in (None, "nil") else chip.split(".")[-1],
             "tier": (field("tier") or ".free").split(".")[-1],
-        })
+        }
+        # Only non-whisper entries carry the keys, so whisper entries stay
+        # byte-identical to what older clients already have.
+        if family != "whisper":
+            entry["family"] = family
+        if languages:
+            entry["languages"] = languages
+        models.append(entry)
     if not models:
         sys.exit("parsed zero models — the regex no longer matches the source")
     return models
 
 
 def repo_and_path(url: str):
-    """https://huggingface.co/<owner>/<repo>/resolve/main/<path> -> (owner/repo, path)"""
-    m = re.match(r"https://huggingface\.co/([^/]+/[^/]+)/resolve/[^/]+/(.+)$", url)
-    return m.groups() if m else (None, None)
+    """https://huggingface.co/<owner>/<repo>/resolve/<rev>/<path> -> (owner/repo, rev, path)"""
+    m = re.match(r"https://huggingface\.co/([^/]+/[^/]+)/resolve/([^/]+)/(.+)$", url)
+    return m.groups() if m else (None, None, None)
 
 
 def main():
@@ -120,21 +134,21 @@ def main():
 
     caches, missing = {}, []
     for m in models:
-        repo, path = repo_and_path(m["downloadURL"])
+        repo, rev, path = repo_and_path(m["downloadURL"])
         if repo is None:
             missing.append((m["id"], "not a Hugging Face resolve URL"))
             continue
-        if repo not in caches:
-            print(f"  reading LFS metadata for {repo}…")
-            caches[repo] = lfs_index(repo)
-        meta = caches[repo].get(path)
+        if (repo, rev) not in caches:
+            print(f"  reading LFS metadata for {repo}@{rev[:7]}…")
+            caches[(repo, rev)] = lfs_index(repo, rev)
+        meta = caches[(repo, rev)].get(path)
         if meta is None:
             missing.append((m["id"], f"{path} not found in {repo}"))
             continue
         sha, size = meta
         m["sha256"] = sha
         m["sizeBytes"] = size
-        m["minAppVersion"] = DEFAULT_MIN_APP_VERSION
+        m["minAppVersion"] = FAMILY_MIN_APP_VERSION.get(m.get("family"), DEFAULT_MIN_APP_VERSION)
 
     if missing:
         for mid, why in missing:

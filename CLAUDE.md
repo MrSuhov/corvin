@@ -24,6 +24,9 @@ make project       # Generate Xcode project via XcodeGen
 
 - `scripts/build-whisper-macos.sh` — whisper.cpp universal (arm64 + x86_64) for macOS
 - `scripts/build-whisper-ios.sh` — whisper.cpp arm64 for iOS
+- `scripts/build-transcribe-macos.sh` — transcribe.cpp (GigaAM) as one universal
+  `libtranscribe.dylib`, pinned to `TRANSCRIBE_REF`; fails if anything but `_transcribe_*` is exported
+- `scripts/build-transcribe-ios.sh` — the same as `TranscribeCpp.xcframework` (device + simulator)
 - `scripts/build-dmg.sh` — full macOS DMG build pipeline (includes bundled small model and the
   `corvin-diarize` helper in `Contents/Helpers`)
 - `scripts/publish-models-manifest.sh` — regenerate and publish `models.json` (whisper models plus
@@ -203,7 +206,8 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
   next; there is no global toggle. A call has no mode choice (its channels give the roles). The card
   also shows "Save as…" (a copy) and "Show in Finder" for the audio and each transcript. Output
   folder and dictionary sit in the bar above the list. Testing a model by voice (`ModelTestView`) is
-  in Models; the call part length is a section of Settings. Dictation texts keep their own menubar
+  in Models, and so is the speaker-diarization model (`DiarizationModelSection`, macOS 14+) — people
+  look for models there, not in the Files card that uses it; the call part length is a section of Settings. Dictation texts keep their own menubar
   window ("Dictation history…").
 - **Per-job model**: `TranscriptionOptions.modelID` (nil = active model) is loaded for that run only,
   so re-transcribing never moves the model fn dictation uses. A model chosen but not downloaded is
@@ -237,6 +241,7 @@ iOS/Intents/         — StartRecordingIntent (App Intents for Shortcuts/Siri)
 CorvinKeyboard/     — KeyboardViewController (KeyboardKit), PTTController, AudioRecorder, IPCClient, CustomActionHandler
 Helpers/Diarizer/    — corvin-diarize: FluidAudio speaker diarization helper (separate package, macOS 14)
 Sources/CWhisper/    — C bridge to whisper.cpp
+Sources/CTranscribe/ — C bridge to transcribe.cpp (GigaAM)
 vendor/whisper.cpp/  — Vendored whisper.cpp
 ```
 
@@ -258,6 +263,29 @@ vendor/whisper.cpp/  — Vendored whisper.cpp
 ### C Bridge
 
 whisper.cpp vendored at `vendor/whisper.cpp`. CWhisper SPM target in `Sources/CWhisper/` provides Swift-accessible C bindings. Static libraries linked from vendor build output.
+
+transcribe.cpp (GigaAM) at `vendor/transcribe.cpp`, bridged by `Sources/CTranscribe/`. It carries a
+ggml of its own, so it is **never** linked statically next to whisper.cpp's: two static ggml copies
+collide on every `ggml_*` symbol. It ships as a dylib (macOS, `Contents/Frameworks`, dev runs find it
+through an rpath into `vendor/` that `build-dmg.sh` deletes) or a framework (iOS host app only) with
+ggml inside and only `_transcribe_*` exported. `TranscribeCppFieldCheck` runs whisper and GigaAM in
+one process (skipped unless `CORVIN_GIGAAM_MODEL`, `CORVIN_WHISPER_MODEL`, `CORVIN_CLIP` are set).
+
+### Model families
+
+`WhisperModel.family` picks the runtime: `.whisper` (ggml `.bin`, whisper.cpp) or `.gigaam` (GGUF,
+`TranscribeCppModel`). `TranscriptionEngine` keeps its public API and holds either a whisper context
+or a `TranscribeCppModel` under the same lock and generation counter; the chunk loop branches per
+chunk, and chunk length follows the model's limit (GigaAM: 25 s, minus a second).
+- GigaAM v3 e2e RNN-T: Russian only (`languages: ["ru"]`, badge on the model row), punctuated,
+  numbers as digits. No prompt (`supportsPrompt` — the dictionary is dropped and the Files card says
+  so), no streaming (`supportsStreaming` — realtime dictation falls back to insert-on-release, and
+  both the recognizer and the insertion mode switch, or nothing would be typed). Words come from token
+  rows joined at SentencePiece's `▁` (`TranscribeCppWords`).
+- The manifest omits `family` for whisper entries (byte-identical for old clients) and gives other
+  families `FAMILY_MIN_APP_VERSION`: an older build would hand a GGUF to whisper.cpp. A family this
+  build has no runtime for (`ModelFamily.isSupported`) is dropped from the catalogue.
+- Apple Silicon only (`chipRequirement`): the x86_64 slice is a plain-x86-64 CPU build.
 
 ### Project Configuration
 

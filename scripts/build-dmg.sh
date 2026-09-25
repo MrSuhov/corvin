@@ -19,6 +19,10 @@ echo "[1/5] Building whisper.cpp universal libraries..."
 echo "[1b/5] Building opus/opusfile universal libraries..."
 "$PROJECT_DIR/scripts/build-opusfile.sh" macos
 
+# Step 1c: transcribe.cpp (GigaAM) as one universal dylib with its ggml hidden
+echo "[1c/5] Building transcribe.cpp universal dylib..."
+"$PROJECT_DIR/scripts/build-transcribe-macos.sh"
+
 # Step 2: Build Corvin universal binary
 echo "[2/4] Building Corvin universal binary..."
 
@@ -136,6 +140,16 @@ if [ ! -f "$SWIFT_BACKDEPLOY" ]; then
 fi
 /usr/bin/ditto "$SWIFT_BACKDEPLOY" "$APP_DIR/Frameworks/libswift_Concurrency.dylib"
 
+# transcribe.cpp (GigaAM). The binary finds it through @executable_path/../Frameworks;
+# the rpath to vendor/ that development runs use is removed from the shipped binary.
+echo "  Embedding libtranscribe.dylib..."
+/usr/bin/ditto "$PROJECT_DIR/vendor/transcribe.cpp/build-universal/libtranscribe.dylib" "$APP_DIR/Frameworks/libtranscribe.dylib"
+install_name_tool -delete_rpath "$PROJECT_DIR/vendor/transcribe.cpp/build-universal" "$APP_DIR/MacOS/Corvin" 2>/dev/null || true
+if otool -l "$APP_DIR/MacOS/Corvin" | grep -q "$PROJECT_DIR/vendor"; then
+    echo "ERROR: the binary still has an rpath into vendor/"
+    exit 1
+fi
+
 # Load local signing config (gitignored). Copy signing.env.example -> signing.env.
 [ -f "$PROJECT_DIR/signing.env" ] && source "$PROJECT_DIR/signing.env"
 SIGN_IDENTITY="${SIGN_IDENTITY:?Set SIGN_IDENTITY (copy signing.env.example to signing.env)}"
@@ -153,6 +167,7 @@ for xpc in "$SPARKLE_VER/XPCServices/"*.xpc; do
 done
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$SP"
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR/Frameworks/libswift_Concurrency.dylib"
+codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR/Frameworks/libtranscribe.dylib"
 # Nested code is signed before the bundle that contains it.
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR/Helpers/corvin-diarize"
 

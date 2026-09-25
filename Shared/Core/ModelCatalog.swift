@@ -47,6 +47,12 @@ enum ModelCatalog {
         let recommended: Bool
         let chipRequirement: String?
         let tier: String
+        /// Absent means whisper: every entry before GigaAM.
+        let family: String?
+        let languages: [String]?
+
+        /// nil for a family this build has no runtime for.
+        var modelFamily: ModelFamily? { family.map(ModelFamily.init(rawValue:)) ?? .whisper }
 
         func asModel() -> WhisperModel {
             WhisperModel(
@@ -56,6 +62,8 @@ enum ModelCatalog {
                 recommended: recommended,
                 chipRequirement: chipRequirement.flatMap(ChipType.init(rawValue:)),
                 tier: ModelTier(rawValue: tier) ?? .free,
+                family: modelFamily ?? .whisper,
+                languages: languages,
                 sizeBytes: sizeBytes
             )
         }
@@ -96,7 +104,7 @@ enum ModelCatalog {
         }
     }
 
-    private static func decode(_ data: Data, appVersion: String) -> [WhisperModel]? {
+    static func decode(_ data: Data, appVersion: String) -> [WhisperModel]? {
         guard let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else {
             flog("ModelCatalog: manifest did not decode")
             return nil
@@ -108,6 +116,7 @@ enum ModelCatalog {
             return nil
         }
         let usable = manifest.models.filter { entry in
+            guard let family = entry.modelFamily, family.isSupported else { return false }
             guard let minimum = entry.minAppVersion else { return true }
             return compareVersions(appVersion, minimum) >= 0
         }

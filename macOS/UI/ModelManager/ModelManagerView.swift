@@ -133,6 +133,15 @@ struct ModelCardView: View {
                         .foregroundColor(.blue)
                         .cornerRadius(4)
                 }
+                if let languages = model.languagesLabel {
+                    Text(languages)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.2))
+                        .foregroundColor(.orange)
+                        .cornerRadius(4)
+                }
             }
 
             // Row 2: specs

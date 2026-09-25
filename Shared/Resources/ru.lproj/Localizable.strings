@@ -144,6 +144,12 @@
 "models.quality.best_compressed" = "лучшее (сжатая)";
 "models.quality.best_fast" = "лучшее (быстрая)";
 "models.quality.english_optimized" = "оптимизирована для English";
+"models.onlyLanguages" = "только %@";
+
+/* Models tab: speaker-diarization model */
+"models.diarization.title" = "Распознавание говорящих";
+"models.diarization.subtitle" = "NVIDIA Nemotron 3 Diarization · до 8 голосов · %@. Нужна для режима «По ролям» и чтобы различать собеседников в групповых звонках.";
+"models.diarization.installed" = "Установлена";
 "models.download" = "Скачать";
 "models.downloading" = "Загрузка…";
 "models.active" = "Активна";
@@ -402,6 +408,7 @@
 /* Realtime dictation */
 "settings.general.realtime" = "Печатать текст по ходу речи";
 "settings.general.realtime.hint" = "Текст появляется в активном поле с отставанием ~1–2 с, не дожидаясь отпускания клавиши. Работает при включённой автовставке.";
+"settings.general.realtime.unsupported" = "%@ не умеет печатать по ходу речи: текст вставится, когда отпустите клавишу.";
 
 /* Dialog (speaker roles) transcripts */
 "roles.speaker" = "Спикер %d";
@@ -518,6 +525,7 @@
 "files.recognition" = "Распознавание";
 "files.mode.plain" = "Текст";
 "files.mode.roles" = "По ролям";
+"files.vocabulary.unsupported" = "Эта модель не использует словарь.";
 "files.mode.plain.hint" = "Сплошной текст, сохраняется как name.txt.";
 "files.transcribe" = "Распознать";
 "files.stop" = "Остановить";

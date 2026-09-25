@@ -1,5 +1,8 @@
 import Foundation
 import CWhisper
+#if canImport(CTranscribe)
+import CTranscribe
+#endif
 import os.log
 
 private let engineLogger = Logger(subsystem: "com.corvin.engine", category: "transcription")
@@ -71,6 +74,15 @@ struct TimedTranscriptionResult {
 class TranscriptionEngine: ObservableObject {
     private let modelManager: ModelManager
     private var whisperContext: OpaquePointer?
+    #if canImport(CTranscribe)
+    /// The loaded model when it is not whisper (GigaAM). At most one of this
+    /// and `whisperContext` is set; both live under `whisperLock` and the
+    /// same generation counter.
+    private var transcribeModel: TranscribeCppModel?
+    #endif
+    /// Languages of the loaded model when it is not multilingual: reported as
+    /// the detected language, which such a model has no way to detect.
+    private var loadedLanguages: [String]?
     private var loadedModelId: String?
     private let whisperLock = NSLock()
     private var keepAliveTimer: DispatchSourceTimer?
@@ -120,6 +132,14 @@ class TranscriptionEngine: ObservableObject {
             }
             defer { self.whisperLock.unlock() }
             // Read the context under the lock, never from outside it.
+            #if canImport(CTranscribe)
+            if let model = self.transcribeModel {
+                _ = try? model.run([Float](repeating: 0, count: 16000), language: nil,
+                                   wordTimestamps: false, shouldAbort: { false })
+                flog("keepAlive: model memory touched")
+                return
+            }
+            #endif
             guard let ctx = self.whisperContext else { return }
             samples.withUnsafeBufferPointer { ptr in
                 _ = whisper_full(ctx, params, ptr.baseAddress, Int32(samples.count))
@@ -154,6 +174,11 @@ class TranscriptionEngine: ObservableObject {
         engineLogger.info("loading model: \(model.name) from: \(path)")
         engineLogger.info("file exists: \(FileManager.default.fileExists(atPath: path))")
 
+        if model.family != .whisper {
+            try loadTranscribeModel(model, path: path)
+            return
+        }
+
         // whisper_init_from_file from whisper.cpp
         var params = whisper_context_default_params()
         #if os(iOS)
@@ -176,7 +201,46 @@ class TranscriptionEngine: ObservableObject {
             throw TranscriptionError.modelLoadFailed
         }
         loadedModelId = model.id
+        loadedLanguages = model.languages
         flog("model loaded successfully")
+    }
+
+    private func loadTranscribeModel(_ model: WhisperModel, path: String) throws {
+        #if canImport(CTranscribe)
+        #if targetEnvironment(simulator)
+        let useGPU = false  // same reason as whisper's use_gpu above
+        #else
+        let useGPU = true
+        #endif
+        do {
+            transcribeModel = try TranscribeCppModel(path: path, useGPU: useGPU)
+        } catch {
+            flog("transcribe.cpp load failed: \(error)")
+            throw TranscriptionError.modelLoadFailed
+        }
+        loadedModelId = model.id
+        loadedLanguages = model.languages
+        flog("model loaded successfully (\(model.family.rawValue))")
+        #else
+        flog("\(model.family.rawValue) models are not supported in this build")
+        throw TranscriptionError.modelLoadFailed
+        #endif
+    }
+
+    /// Whether any model is loaded. Caller holds `whisperLock`.
+    private var hasContextLocked: Bool {
+        #if canImport(CTranscribe)
+        if transcribeModel != nil { return true }
+        #endif
+        return whisperContext != nil
+    }
+
+    /// Longest chunk the loaded model takes in one pass. Caller holds `whisperLock`.
+    private var maxChunkSamplesLocked: Int {
+        #if canImport(CTranscribe)
+        if let transcribeModel { return transcribeModel.maxSamples }
+        #endif
+        return 25 * 16000
     }
 
     /// - Parameters:
@@ -235,13 +299,16 @@ class TranscriptionEngine: ObservableObject {
     /// tells the caller how many made it.
     ///
     /// Blocks: may load the model and takes `whisperLock`. Call off the main thread.
-    func fitPrompt(terms: [String], maxTokens: Int = 200) throws -> (prompt: String?, used: Int) {
+    /// - Parameter modelID: the model the prompt is for; nil = the active one.
+    func fitPrompt(terms: [String], modelID: String? = nil, maxTokens: Int = 200) throws -> (prompt: String?, used: Int) {
         guard !terms.isEmpty else { return (nil, 0) }
-        _ = try prepareContext()
+        _ = try prepareContext(modelID: modelID)
 
         whisperLock.lock()
         defer { whisperLock.unlock() }
-        guard let ctx = whisperContext else { throw TranscriptionError.noModel }
+        // A model without prompt support: no terms fit.
+        guard hasContextLocked else { throw TranscriptionError.noModel }
+        guard let ctx = whisperContext else { return (nil, 0) }
 
         var fitted: (prompt: String?, used: Int) = (nil, 0)
         for count in 1...terms.count {
@@ -317,7 +384,9 @@ class TranscriptionEngine: ObservableObject {
                 }
 
                 // Split into chunks (~25s each, cut at silence) for reliable processing
-                let chunkSize = 25 * 16000 // 25 seconds at 16kHz
+                self.whisperLock.lock()
+                let chunkSize = self.maxChunkSamplesLocked
+                self.whisperLock.unlock()
                 let chunks = Self.splitAtSilence(samples: samples, maxChunkSize: chunkSize)
                 flog("split into \(chunks.count) chunks (\(String(format: "%.1f", Float(samples.count) / 16000.0))s total)")
 
@@ -428,6 +497,42 @@ class TranscriptionEngine: ObservableObject {
                     // String(cString:) bytes that changed after it had validated
                     // them — an ill-formed String that later trapped in AppKit.
                     self.whisperLock.lock()
+
+                    #if canImport(CTranscribe)
+                    if let model = self.transcribeModel, self.currentGeneration() == myGeneration {
+                        let chunkStart = TimeInterval(chunkOffsets[idx]) / 16000
+                        do {
+                            let token = abortToken
+                            let out = try model.run(chunk, language: nil, wordTimestamps: options.wordTimestamps,
+                                                    shouldAbort: {
+                                token.engine.currentGeneration() != token.generation
+                                    || token.shouldCancel?() == true
+                            })
+                            self.whisperLock.unlock()
+                            // Chunks come back without a leading space, unlike
+                            // whisper's segments.
+                            let text = out.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !text.isEmpty { fullText += (fullText.isEmpty ? "" : " ") + text }
+                            words += out.words.map {
+                                TimedWord(text: $0.text, start: $0.start + chunkStart, end: $0.end + chunkStart)
+                            }
+                            if detectedLang.isEmpty { detectedLang = self.loadedLanguages?.first ?? "" }
+                            flog("chunk \(idx+1) done, total text length: \(fullText.count)")
+                        } catch is CancellationError {
+                            // Stopped by the callback: the top of the loop
+                            // tells a cancel, an unload and a model swap apart.
+                            self.whisperLock.unlock()
+                            flog("chunk \(idx + 1): aborted")
+                            continue
+                        } catch {
+                            self.whisperLock.unlock()
+                            flog("transcribe.cpp failed on chunk \(idx): \(error)")
+                        }
+                        idx += 1
+                        retries = 0
+                        continue
+                    }
+                    #endif
 
                     // Re-read the context every chunk instead of capturing it
                     // once before the loop: between two chunks the model can be
@@ -579,6 +684,9 @@ class TranscriptionEngine: ObservableObject {
         whisperLock.lock()
         defer { whisperLock.unlock() }
         guard let ctx = whisperContext, currentGeneration() == myGeneration else {
+            // Streaming is whisper-only; `DictationCoordinator` never starts it
+            // on a model without `supportsStreaming`.
+            if hasContextLocked, currentGeneration() == myGeneration { throw TranscriptionError.transcriptionFailed }
             throw CancellationError()
         }
 
@@ -712,7 +820,9 @@ class TranscriptionEngine: ObservableObject {
     }
 
     var isModelLoaded: Bool {
-        return whisperContext != nil
+        whisperLock.lock()
+        defer { whisperLock.unlock() }
+        return hasContextLocked
     }
 
     func unloadModel() {
@@ -745,13 +855,13 @@ class TranscriptionEngine: ObservableObject {
             wanted = modelManager.activeModel
         }
         guard let model = wanted else { throw TranscriptionError.noModel }
-        if whisperContext == nil || loadedModelId != model.id {
-            engineLogger.info("need to load/reload model (ctx=\(self.whisperContext == nil ? "nil" : "set"), loaded=\(self.loadedModelId ?? "nil"), wanted=\(model.id))")
+        if !hasContextLocked || loadedModelId != model.id {
+            engineLogger.info("need to load/reload model (ctx=\(self.hasContextLocked ? "set" : "nil"), loaded=\(self.loadedModelId ?? "nil"), wanted=\(model.id))")
             bumpGeneration()
             freeContextLocked()
             try loadModel(model)
         }
-        guard whisperContext != nil else { throw TranscriptionError.noModel }
+        guard hasContextLocked else { throw TranscriptionError.noModel }
         return currentGeneration()
     }
 
@@ -787,11 +897,15 @@ class TranscriptionEngine: ObservableObject {
     /// Free the whisper context. Caller must hold `whisperLock` and must have
     /// bumped the generation first, or an in-flight run will keep using it.
     private func freeContextLocked() {
-        guard let ctx = whisperContext else { return }
+        guard hasContextLocked else { return }
         flog("unloading model (loadedModelId=\(loadedModelId ?? "nil"))")
-        whisper_free(ctx)
+        if let ctx = whisperContext { whisper_free(ctx) }
         whisperContext = nil
+        #if canImport(CTranscribe)
+        transcribeModel = nil
+        #endif
         loadedModelId = nil
+        loadedLanguages = nil
     }
 
     /// Ties an `abort_callback` to the generation its run started on.
@@ -810,7 +924,7 @@ class TranscriptionEngine: ObservableObject {
     /// Ensure model is loaded, reload if needed (e.g. after memory warning)
     func ensureModelLoaded() {
         guard modelManager.activeModel != nil else { return }
-        if whisperContext == nil {
+        if !isModelLoaded {
             flog("ensureModelLoaded: model not in memory, reloading")
             warmup()
         }
@@ -825,9 +939,15 @@ class TranscriptionEngine: ObservableObject {
         params.print_progress = false
         whisperLock.lock()
         defer { whisperLock.unlock() }
-        if whisperContext == nil {
+        if !hasContextLocked {
             try? loadModel()
         }
+        #if canImport(CTranscribe)
+        if let model = transcribeModel {
+            _ = try? model.run(samples, language: nil, wordTimestamps: false, shouldAbort: { false })
+            return
+        }
+        #endif
         guard let ctx = whisperContext else { return }
         samples.withUnsafeBufferPointer { ptr in
             _ = whisper_full(ctx, params, ptr.baseAddress, Int32(samples.count))

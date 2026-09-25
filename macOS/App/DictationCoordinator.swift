@@ -57,7 +57,9 @@ final class DictationCoordinator {
         }
 
         let processors: [TranscriptProcessor] = []
-        let realtime = DictationSettings.isRealtimeEnabled
+        // A model that cannot stream (GigaAM) dictates as without realtime:
+        // recognizer and insertion both switch, or nothing would be typed.
+        let realtime = DictationSettings.isRealtimeEnabled && modelManager.activeModel?.supportsStreaming != false
             && UserDefaults.standard.bool(forKey: "autoInsertText")
             && !processors.contains { $0.modifiesText }
         guard let recognizer = makeRecognizer(realtime: realtime) else {

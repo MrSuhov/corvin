@@ -144,6 +144,12 @@
 "models.quality.best_compressed" = "la mejor (comprimida)";
 "models.quality.best_fast" = "la mejor (rápida)";
 "models.quality.english_optimized" = "optimizada para inglés";
+"models.onlyLanguages" = "solo %@";
+
+/* Models tab: speaker-diarization model */
+"models.diarization.title" = "Reconocimiento de hablantes";
+"models.diarization.subtitle" = "NVIDIA Nemotron 3 Diarization · hasta 8 voces · %@. La usan «Por hablante» y las llamadas en grupo, para distinguir las otras voces.";
+"models.diarization.installed" = "Instalado";
 "models.download" = "Descargar";
 "models.downloading" = "Descargando…";
 "models.active" = "Activo";
@@ -402,6 +408,7 @@
 /* Realtime dictation */
 "settings.general.realtime" = "Escribir el texto mientras hablas";
 "settings.general.realtime.hint" = "El texto aparece en el campo activo con 1–2 segundos de retraso, sin esperar a que sueltes la tecla. Requiere la inserción automática.";
+"settings.general.realtime.unsupported" = "%@ no escribe mientras hablas: el texto se inserta al soltar la tecla.";
 
 /* Dialog (speaker roles) transcripts */
 "roles.speaker" = "Hablante %d";
@@ -518,6 +525,7 @@
 "files.recognition" = "Transcripción";
 "files.mode.plain" = "Texto";
 "files.mode.roles" = "Por hablante";
+"files.vocabulary.unsupported" = "Este modelo no usa el diccionario.";
 "files.mode.plain.hint" = "Un solo bloque de texto, guardado como name.txt.";
 "files.transcribe" = "Transcribir";
 "files.stop" = "Detener";

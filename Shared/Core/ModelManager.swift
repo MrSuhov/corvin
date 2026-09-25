@@ -12,6 +12,15 @@ enum ModelTier: String, Codable {
     case pro
 }
 
+/// Which runtime loads a model. Whisper models are ggml `.bin` files run by
+/// whisper.cpp; the rest are GGUF files run by transcribe.cpp (`CTranscribe`).
+enum ModelFamily: String, Codable {
+    case whisper
+    /// Sber's GigaAM v3 (e2e RNN-T): Russian only, punctuated, ≤25 s a pass,
+    /// no initial prompt, no streaming.
+    case gigaam
+}
+
 struct WhisperModel: Identifiable, Codable, Equatable {
     let id: String
     let name: String
@@ -24,6 +33,9 @@ struct WhisperModel: Identifiable, Codable, Equatable {
     let recommended: Bool
     let chipRequirement: ChipType? // nil = works on both
     let tier: ModelTier
+    var family: ModelFamily = .whisper
+    /// ISO 639-1 codes the model recognises; nil = multilingual (whisper).
+    var languages: [String]? = nil
     /// Exact download size. Only the remote manifest knows it; the compiled-in
     /// catalogue leaves it nil and falls back to the human-readable `size`.
     var sizeBytes: Int64? = nil
@@ -33,6 +45,28 @@ struct WhisperModel: Identifiable, Codable, Equatable {
     var updateAvailable: Bool = false
 
     var isPro: Bool { tier == .pro }
+
+    /// Takes a vocabulary as an initial prompt (`TranscriptionEngine.fitPrompt`).
+    var supportsPrompt: Bool { family == .whisper }
+    /// Can run `WhisperStreamingRecognizer` (realtime dictation).
+    var supportsStreaming: Bool { family == .whisper }
+
+    /// "только русский" for a single-language model, in the language the app
+    /// is shown in; nil for a multilingual one. A badge on the model's row:
+    /// otherwise it would look like a drop-in for whisper.
+    var languagesLabel: String? {
+        guard let languages, !languages.isEmpty else { return nil }
+        let names = languages.map { LocalizedBundle.locale.localizedString(forLanguageCode: $0) ?? $0 }
+        return "models.onlyLanguages".localized(with: names.joined(separator: ", "))
+    }
+
+    /// Name on disk in the models directory.
+    var fileName: String {
+        switch family {
+        case .whisper: return "ggml-\(name).bin"
+        case .gigaam: return "\(id).gguf"
+        }
+    }
 
     private static let whisperURL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
@@ -181,6 +215,24 @@ struct WhisperModel: Identifiable, Codable, Equatable {
             quality: "models.quality.best_compressed", speed: "~1x realtime",
             downloadURL: URL(string: "\(whisperURL)/ggml-large-v2-q5_0.bin")!,
             sha256: "", recommended: false, chipRequirement: .applesilicon, tier: .free
+        ),
+
+        // --- Russian: Sber GigaAM v3 e2e RNN-T, run by transcribe.cpp ---
+        // Punctuated, numbers as digits. Apple Silicon only: the x86_64 slice
+        // of transcribe.cpp is a plain-x86-64 CPU build, too slow to offer.
+        WhisperModel(
+            id: "gigaam-v3-q8", name: "gigaam-v3-q8", size: "274 MB", ramRequired: "~350 MB",
+            quality: "models.quality.best", speed: "~70x realtime",
+            downloadURL: URL(string: "https://huggingface.co/handy-computer/gigaam-v3-e2e-rnnt-gguf/resolve/b9b68a835993df09018237a11d2a9b8c1925844d/gigaam-v3-e2e-rnnt-Q8_0.gguf")!,
+            sha256: "", recommended: false, chipRequirement: .applesilicon, tier: .free,
+            family: .gigaam, languages: ["ru"]
+        ),
+        WhisperModel(
+            id: "gigaam-v3-q4", name: "gigaam-v3-q4", size: "184 MB", ramRequired: "~260 MB",
+            quality: "models.quality.good", speed: "~70x realtime",
+            downloadURL: URL(string: "https://huggingface.co/handy-computer/gigaam-v3-e2e-rnnt-gguf/resolve/b9b68a835993df09018237a11d2a9b8c1925844d/gigaam-v3-e2e-rnnt-Q4_K_M.gguf")!,
+            sha256: "", recommended: false, chipRequirement: .applesilicon, tier: .free,
+            family: .gigaam, languages: ["ru"]
         ),
     ]
 }
@@ -471,7 +523,7 @@ class ModelManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
 
     func modelPath(for model: WhisperModel) -> URL {
-        modelsDirectory.appendingPathComponent("ggml-\(model.name).bin")
+        modelsDirectory.appendingPathComponent(model.fileName)
     }
 
     private var defaults: UserDefaults {

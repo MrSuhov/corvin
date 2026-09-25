@@ -89,6 +89,8 @@ platform :ios do
     # Build whisper.cpp for iOS
     project_root = File.expand_path("..")
     sh("cd '#{project_root}' && ./scripts/build-whisper-ios.sh")
+    # transcribe.cpp (GigaAM): the xcframework project.yml embeds in the app
+    sh("cd '#{project_root}' && ./scripts/build-transcribe-ios.sh")
 
     # Generate Xcode project
     sh("cd '#{project_root}' && xcodegen generate")

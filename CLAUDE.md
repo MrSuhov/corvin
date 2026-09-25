@@ -327,6 +327,20 @@ The linter checks key parity, per-key format-specifier parity, plural
 completeness, and that no new user-facing literal is hardcoded. Adding a
 language is a new `.lproj` plus one case in `AppLanguage`.
 
+## CI
+
+GitHub Actions (`.github/workflows/`), on every push to `main`:
+
+- **Lint** — `scripts/check-localization.py`.
+- **Deploy iOS to TestFlight** — `fastlane ios testflight_ios` on a clean `macos-26` runner: builds
+  all of `vendor/` from scratch (whisper.cpp, opus, transcribe.cpp), archives, uploads. **iOS reaches
+  TestFlight by pushing to main**; `scripts/deploy-testflight.sh` is only for uploading without CI.
+  A new vendored dependency must be built in that lane (`fastlane/Fastfile`) — the runner has none of
+  your local `vendor/`.
+- **Deploy macOS to TestFlight** — disabled. macOS ships through `scripts/publish-release.sh`.
+
+`publish-release.sh` pushes the release commit itself, which triggers the iOS upload too.
+
 ## Git
 
 Remote `origin` → https://github.com/MrSuhov/corvin (auth via `gh` over HTTPS).

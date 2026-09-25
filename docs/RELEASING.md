@@ -10,7 +10,9 @@ deltas, hosted on **GitHub Releases**.
    `signing.env.example` to `signing.env` (gitignored) and fill in your Apple Team
    ID, Developer ID signing identity, and (for App Store/TestFlight) the App Store
    Connect key/issuer/app ids. `scripts/build-dmg.sh` and
-   `scripts/deploy-testflight.sh` source it automatically; before running
+   `scripts/deploy-testflight.sh` source it automatically (the latter only for an
+   upload by hand — iOS goes to TestFlight from CI on every push to `main`, see
+   "CI" in CLAUDE.md); before running
    `xcodegen`/`make project` manually, run `source signing.env` so
    `${DEVELOPMENT_TEAM}` in `project.yml` expands.
 

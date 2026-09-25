@@ -16,9 +16,13 @@ OUT="$SRC/build-ios"
 XCFRAMEWORK="$OUT/TranscribeCpp.xcframework"
 DEPLOYMENT=16.0
 
-# Same pinned source as macOS; cloning and checkout happen there.
-[ -d "$SRC/.git" ] || "$PROJECT_DIR/scripts/build-transcribe-macos.sh"
+# The same pinned source as macOS: the ref is declared once, there.
 TRANSCRIBE_REF=$(grep '^TRANSCRIBE_REF=' "$PROJECT_DIR/scripts/build-transcribe-macos.sh" | cut -d'"' -f2)
+if [ ! -d "$SRC/.git" ]; then
+    echo "=== Cloning transcribe.cpp $TRANSCRIBE_REF ==="
+    git clone -q https://github.com/handy-computer/transcribe.cpp "$SRC"
+fi
+git -C "$SRC" fetch -q --tags
 git -C "$SRC" checkout -q "$TRANSCRIBE_REF"
 
 echo "=== Building transcribe.cpp $TRANSCRIBE_REF for iOS (device + simulator) ==="

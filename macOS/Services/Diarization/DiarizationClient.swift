@@ -15,7 +15,8 @@ enum DiarizationClient {
     /// Layout of the models directory the bundled helper can read. Manifest
     /// entries declaring another value are ignored, so a model update that
     /// needs a newer helper never reaches an older build.
-    static let helperAPI = 1
+    /// 1 — pyannote (Segmentation/FBank/Embedding/PLDA); 2 — Nemotron 3.
+    static let helperAPI = 2
 
     enum DiarizationError: LocalizedError {
         case unsupportedSystem
@@ -51,7 +52,7 @@ enum DiarizationClient {
 
     /// - Parameters:
     ///   - pcm: 16 kHz mono Int16, as `AudioFileDecoder.decode` returns it.
-    ///   - onProgress: `(done, total)` segmentation chunks, off the main thread.
+    ///   - onProgress: `(done, total)` 30 s audio blocks, off the main thread.
     ///   - shouldCancel: polled every 100 ms; the helper is terminated once it
     ///     returns true, and the call throws `CancellationError`.
     static func diarize(pcm: Data,

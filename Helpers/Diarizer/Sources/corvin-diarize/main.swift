@@ -1,4 +1,3 @@
-import CoreML
 import FluidAudio
 import Foundation
 
@@ -10,14 +9,17 @@ import Foundation
 // higher than the importer's. A process also contains FluidAudio's known macOS
 // 14 BNNS crash — it takes down this helper, not the app.
 //
-// Local only. Models are loaded from --models with MLModel(contentsOf:); the
+// Local only. Models are loaded from --models with Nemotron3Models.load; the
 // FluidAudio loaders that download missing files from HuggingFace are never
 // called, so nothing here can reach the network.
+//
+// Model: NVIDIA Nemotron 3 Diarization (8-speaker streaming Sortformer), the
+// CoreML port from FluidInference/nemotron-3-diarization-coreml. The preset is
+// whichever bundle --models holds (see `presets`); the store installs one.
 //
 // Usage:
 //   corvin-diarize --models <dir> --raw <file>   16 kHz mono Float32 little-endian
 //   corvin-diarize --models <dir> --audio <file> any AVFoundation format (debugging)
-//   [--speakers N | --min-speakers N --max-speakers N]
 //
 // stdout, one JSON object per line:
 //   {"progress":3,"total":40}
@@ -34,9 +36,6 @@ struct Options {
     var models: URL?
     var raw: URL?
     var audio: URL?
-    var speakers: Int?
-    var minSpeakers: Int?
-    var maxSpeakers: Int?
 }
 
 func fail(_ message: String, _ code: ExitCode) -> Never {
@@ -51,18 +50,11 @@ func parse(_ args: [String]) -> Options {
         guard let v = it.next() else { fail("missing value for \(flag)", .usage) }
         return v
     }
-    func int(_ flag: String) -> Int {
-        guard let n = Int(value(flag)), n > 0 else { fail("\(flag) needs a positive integer", .usage) }
-        return n
-    }
     while let arg = it.next() {
         switch arg {
         case "--models": options.models = URL(fileURLWithPath: value(arg), isDirectory: true)
         case "--raw": options.raw = URL(fileURLWithPath: value(arg))
         case "--audio": options.audio = URL(fileURLWithPath: value(arg))
-        case "--speakers": options.speakers = int(arg)
-        case "--min-speakers": options.minSpeakers = int(arg)
-        case "--max-speakers": options.maxSpeakers = int(arg)
         default: fail("unknown argument \(arg)", .usage)
         }
     }
@@ -77,51 +69,30 @@ func emit(_ object: [String: Any]) {
     FileHandle.standardOutput.write(data + Data("\n".utf8))
 }
 
-/// Same file layout FluidAudio downloads, read without its download path.
-func loadModels(from directory: URL) throws -> OfflineDiarizerModels {
-    let started = Date()
-    let names = ModelNames.OfflineDiarizer.self
-    let required = [names.segmentationFile, names.fbankFile, names.embeddingFile,
-                    names.pldaRhoFile, names.pldaParameters]
-    let missing = required.filter {
+/// Presets the helper can run, most preferred first, keyed by the bundle the
+/// store installed. `offline` sees 30 s at a time — latency is irrelevant for a
+/// file; the split-graph preset is half the download at slightly higher DER.
+let presets = ["offline", "c128-split-w8a8"]
+
+/// Loads the installed preset from disk. `Nemotron3Models.load` reads only the
+/// given directory; `loadFromHuggingFace` (the download path) is never called.
+func loadDiarizer(from directory: URL) async throws -> Nemotron3Diarizer {
+    let installed = presets.compactMap(Nemotron3Config.preset(named:)).first {
+        FileManager.default.fileExists(atPath: directory.appendingPathComponent($0.modelFileName).path)
+    }
+    guard let config = installed else {
+        fail("models missing in \(directory.path): no Nemotron 3 bundle", .modelsMissing)
+    }
+    var assets = [ModelNames.Nemotron3.silenceEmbeddingFile]
+    if config.splitGraph { assets.append(ModelNames.Nemotron3.preEncodeProjectionFile) }
+    let missing = assets.filter {
         !FileManager.default.fileExists(atPath: directory.appendingPathComponent($0).path)
     }
     guard missing.isEmpty else {
         fail("models missing in \(directory.path): \(missing.joined(separator: ", "))", .modelsMissing)
     }
-
-    func model(_ file: String, _ units: MLComputeUnits) throws -> MLModel {
-        let configuration = MLModelConfiguration()
-        configuration.computeUnits = units
-        return try MLModel(contentsOf: directory.appendingPathComponent(file), configuration: configuration)
-    }
-
-    // Mirrors OfflineDiarizerModels.load: FBank is fastest on CPU, the rest
-    // may use GPU/ANE. On macOS 14 `.all` is also the routing reported not to
-    // hit the BNNS crash.
-    return OfflineDiarizerModels(
-        segmentationModel: try model(names.segmentationFile, .all),
-        fbankModel: try model(names.fbankFile, .cpuOnly),
-        embeddingModel: try model(names.embeddingFile, .all),
-        pldaRhoModel: try model(names.pldaRhoFile, .all),
-        pldaPsi: try loadPLDAPsi(directory.appendingPathComponent(names.pldaParameters)),
-        compilationDuration: Date().timeIntervalSince(started)
-    )
-}
-
-/// `plda-parameters.json` → psi vector. FluidAudio's own reader is private.
-func loadPLDAPsi(_ url: URL) throws -> [Double] {
-    let root = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
-    guard let tensors = root?["tensors"] as? [String: Any],
-          let psi = tensors["psi"] as? [String: Any],
-          let base64 = psi["data_base64"] as? String,
-          let bytes = Data(base64Encoded: base64, options: .ignoreUnknownCharacters),
-          bytes.count >= MemoryLayout<Float>.size
-    else { throw NSError(domain: "corvin-diarize", code: 1,
-                         userInfo: [NSLocalizedDescriptionKey: "bad plda-parameters.json"]) }
-    var floats = [Float](repeating: 0, count: bytes.count / MemoryLayout<Float>.size)
-    _ = floats.withUnsafeMutableBytes { bytes.copyBytes(to: $0) }
-    return floats.map(Double.init)
+    let models = try await Nemotron3Models.load(config: config, directory: directory)
+    return Nemotron3Diarizer(config: config, models: models)
 }
 
 func readRawSamples(_ url: URL) throws -> [Float] {
@@ -137,36 +108,46 @@ let options = parse(CommandLine.arguments)
 // model, it throws instead of opening a connection.
 ModelHub.offlineMode = true
 
-var config = OfflineDiarizerConfig.default
-if let n = options.speakers {
-    config = config.withSpeakers(exactly: n)
-} else if options.minSpeakers != nil || options.maxSpeakers != nil {
-    config = config.withSpeakers(min: options.minSpeakers, max: options.maxSpeakers)
-}
+/// Audio fed per streaming call; progress is reported once per block.
+let blockSeconds = 30
 
 let semaphore = DispatchSemaphore(value: 0)
 Task {
     defer { semaphore.signal() }
     do {
         let started = Date()
-        let manager = OfflineDiarizerManager(config: config)
-        manager.initialize(models: try loadModels(from: options.models!))
+        let diarizer = try await loadDiarizer(from: options.models!)
+        let audio = try options.raw.map(readRawSamples)
+            ?? AudioConverter().resampleAudioFile(options.audio!)
 
-        let progress: @Sendable (Int, Int) -> Void = { done, total in
-            emit(["progress": done, "total": total])
+        // The streaming path is frame-exact with processComplete but reports
+        // progress; it costs nothing extra for a whole file.
+        let block = blockSeconds * diarizer.config.sampleRate
+        let total = max(1, (audio.count + block - 1) / block)
+        var probabilities: [Float] = []
+        var frames = 0
+        func collect(_ results: [Nemotron3ChunkResult]) {
+            for r in results {
+                probabilities += r.probabilities
+                frames += r.frameCount
+            }
         }
-        let result: DiarizationResult
-        if let raw = options.raw {
-            result = try await manager.process(audio: try readRawSamples(raw), progressCallback: progress)
-        } else {
-            result = try await manager.process(options.audio!, progressCallback: progress)
+        for (i, offset) in stride(from: 0, to: audio.count, by: block).enumerated() {
+            diarizer.appendAudio(Array(audio[offset..<min(offset + block, audio.count)]))
+            collect(try diarizer.processBufferedAudio())
+            emit(["progress": i + 1, "total": total])
         }
+        collect(try diarizer.finishStream())
 
+        let segments = Nemotron3Diarizer.segments(
+            probabilities: probabilities, frameCount: frames,
+            numSpeakers: diarizer.config.numSpeakers)
         emit([
-            "segments": result.segments.map {
-                ["speaker": $0.speakerId,
-                 "start": Double($0.startTimeSeconds),
-                 "end": Double($0.endTimeSeconds)] as [String: Any]
+            "segments": segments.map {
+                // Arrival order: the first voice heard is speaker 1.
+                ["speaker": String($0.speakerIndex + 1),
+                 "start": Double($0.startSeconds),
+                 "end": Double($0.endSeconds)] as [String: Any]
             },
             "seconds": Date().timeIntervalSince(started),
         ])

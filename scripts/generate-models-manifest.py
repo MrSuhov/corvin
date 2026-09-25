@@ -111,8 +111,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(REPO_ROOT / "build/models.json"))
     ap.add_argument("--diarization-revision", default=None,
-                    help="Hugging Face commit of the diarization models to publish "
-                         "(default: DIARIZATION_REVISION)")
+                    help="Hugging Face commit for the newest diarization entry "
+                         "(default: its pinned revision)")
     args = ap.parse_args()
 
     models = parse_swift_catalogue()
@@ -141,7 +141,12 @@ def main():
             print(f"  MISSING {mid}: {why}", file=sys.stderr)
         sys.exit("refusing to emit a manifest with unverifiable models")
 
-    diarization = diarization_entry(args.diarization_revision or DIARIZATION_REVISION)
+    diarization = [
+        diarization_entry(spec, args.diarization_revision if last and args.diarization_revision
+                          else spec["revision"])
+        for last, spec in ((i == len(DIARIZATION_ENTRIES) - 1, spec)
+                           for i, spec in enumerate(DIARIZATION_ENTRIES))
+    ]
 
     manifest = {
         "schemaVersion": SCHEMA_VERSION,
@@ -149,7 +154,7 @@ def main():
         "models": models,
         # Ignored by clients that predate it (JSONDecoder skips unknown keys),
         # so schemaVersion stays 1.
-        "diarization": [diarization],
+        "diarization": diarization,
     }
 
     out = Path(args.out)
@@ -157,62 +162,86 @@ def main():
     out.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
     total = sum(m["sizeBytes"] for m in models)
     print(f"wrote {out} — {len(models)} models, {total/2**30:.1f} GiB catalogued, "
-          f"diarization {diarization['id']} ({diarization['sizeBytes']/2**20:.1f} MiB)")
+          "diarization " + ", ".join(f"{d['id']} ({d['sizeBytes']/2**20:.1f} MiB)" for d in diarization))
 
 
 # --- Speaker diarization models (macOS, corvin-diarize) ----------------------
 #
-# A directory of CoreML bundles rather than one file, so the entry lists every
-# file. Hugging Face only reports sha256 for LFS files, so each file is
-# downloaded (~22 MB total) and hashed here; LFS hashes are cross-checked.
-# URLs are pinned to the revision, never `main`: clients only move to new
+# A directory of CoreML bundles rather than one file, so an entry lists every
+# file. URLs are pinned to the revision, never `main`: clients only move to new
 # models when a manifest naming them is published.
 
-DIARIZATION_REPO = "FluidInference/speaker-diarization-coreml"
-DIARIZATION_REVISION = "1ed7a662fdc7109e36d822db793ee6eebdaf8594"
-DIARIZATION_PATHS = ["Segmentation.mlmodelc", "FBank.mlmodelc", "Embedding.mlmodelc",
-                     "PldaRho.mlmodelc", "plda-parameters.json"]
-# Layout version corvin-diarize reads (DiarizationClient.helperAPI). Bump both
-# together when the helper needs a different set of files.
-DIARIZATION_HELPER_API = 1
-DIARIZATION_MIN_APP_VERSION = "1.5.0"
+# Every entry stays published: a client takes the last one whose helperAPI its
+# bundled corvin-diarize reads, so 1.5.0–1.5.2 keep getting pyannote while newer
+# builds move to Nemotron. Append new entries; never edit a published one.
+#
+# `strip` is a repo-path prefix dropped from local paths that have it —
+# corvin-diarize reads one flat directory, the repo keeps presets in
+# subdirectories next to shared root files.
+DIARIZATION_ENTRIES = [
+    {
+        "id": "fluid-offline",
+        "repo": "FluidInference/speaker-diarization-coreml",
+        "revision": "1ed7a662fdc7109e36d822db793ee6eebdaf8594",
+        "paths": ["Segmentation.mlmodelc", "FBank.mlmodelc", "Embedding.mlmodelc",
+                  "PldaRho.mlmodelc", "plda-parameters.json"],
+        "strip": "",
+        "helperAPI": 1,
+        "minAppVersion": "1.5.0",
+    },
+    {
+        # NVIDIA Nemotron 3 Diarization, `offline` preset (30 s context).
+        "id": "nemotron3-offline",
+        "repo": "FluidInference/nemotron-3-diarization-coreml",
+        "revision": "1b0b133f6f8820292010afd776d8f9fbc9fca17e",
+        "paths": ["monolithic/v2/Nemotron3Diarizer_offline.mlmodelc", "learnable_sil_emb.bin"],
+        "strip": "monolithic/v2/",
+        "helperAPI": 2,
+        "minAppVersion": "1.5.3",
+    },
+]
 
 
-def diarization_entry(revision: str) -> dict:
+def diarization_entry(spec: dict, revision: str) -> dict:
+    """Files of one entry with sha256 and size. LFS files carry their sha256
+    in the tree listing; the rest (small) are downloaded and hashed."""
     import hashlib
 
+    repo = spec["repo"]
     tree_url = "https://huggingface.co/api/models/{repo}/tree/{rev}/{path}?recursive=true"
-    root = fetch_json(f"https://huggingface.co/api/models/{DIARIZATION_REPO}/tree/{revision}")
     listed = []
-    for path in DIARIZATION_PATHS:
-        top = next((e for e in root if e["path"] == path), None)
+    for path in spec["paths"]:
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        siblings = fetch_json(f"https://huggingface.co/api/models/{repo}/tree/{revision}"
+                              + (f"/{parent}" if parent else ""))
+        top = next((e for e in siblings if e["path"] == path), None)
         if top is None:
-            sys.exit(f"diarization: {path} not found at {revision}")
+            sys.exit(f"diarization: {path} not found in {repo} at {revision}")
         if top["type"] == "file":
             listed.append(top)
         else:
-            listed += [e for e in fetch_json(tree_url.format(repo=DIARIZATION_REPO, rev=revision, path=path))
+            listed += [e for e in fetch_json(tree_url.format(repo=repo, rev=revision, path=path))
                        if e["type"] == "file"]
 
-    print(f"  hashing {len(listed)} diarization files at {revision[:7]}…")
+    print(f"  {spec['id']}: {len(listed)} files at {revision[:7]}…")
     files = []
     for e in listed:
-        url = f"https://huggingface.co/{DIARIZATION_REPO}/resolve/{revision}/{e['path']}"
-        with urllib.request.urlopen(url, timeout=120) as r:
-            body = r.read()
-        sha = hashlib.sha256(body).hexdigest()
-        lfs = (e.get("lfs") or {}).get("oid")
-        if lfs and lfs != sha:
-            sys.exit(f"diarization: {e['path']} sha256 {sha} != LFS {lfs}")
-        if len(body) != e["size"]:
-            sys.exit(f"diarization: {e['path']} size {len(body)} != listed {e['size']}")
-        files.append({"path": e["path"], "url": url, "sha256": sha, "sizeBytes": len(body)})
+        url = f"https://huggingface.co/{repo}/resolve/{revision}/{e['path']}"
+        sha = (e.get("lfs") or {}).get("oid")
+        if not sha:
+            with urllib.request.urlopen(url, timeout=120) as r:
+                body = r.read()
+            if len(body) != e["size"]:
+                sys.exit(f"diarization: {e['path']} size {len(body)} != listed {e['size']}")
+            sha = hashlib.sha256(body).hexdigest()
+        local = e["path"].removeprefix(spec["strip"]) if spec["strip"] else e["path"]
+        files.append({"path": local, "url": url, "sha256": sha, "sizeBytes": e["size"]})
 
     return {
-        "id": f"fluid-offline-{revision[:7]}",
+        "id": f"{spec['id']}-{revision[:7]}",
         "revision": revision,
-        "minAppVersion": DIARIZATION_MIN_APP_VERSION,
-        "helperAPI": DIARIZATION_HELPER_API,
+        "minAppVersion": spec["minAppVersion"],
+        "helperAPI": spec["helperAPI"],
         "sizeBytes": sum(f["sizeBytes"] for f in files),
         "files": files,
     }

@@ -27,7 +27,8 @@ make project       # Generate Xcode project via XcodeGen
 - `scripts/build-dmg.sh` — full macOS DMG build pipeline (includes bundled small model and the
   `corvin-diarize` helper in `Contents/Helpers`)
 - `scripts/publish-models-manifest.sh` — regenerate and publish `models.json` (whisper models plus
-  the `diarization` section, pinned to `DIARIZATION_REVISION` in `generate-models-manifest.py`)
+  the `diarization` section, one entry per `DIARIZATION_ENTRIES` item in `generate-models-manifest.py`,
+  each pinned to a revision)
 - `scripts/generate-status-bar-icons.swift` — the menubar raven, beak closed (idle), open
   (recording), and closed with the eye twice as wide (transcribing), 24×18 pt template PNGs into
   `macOS/Resources`; its outline is measured off a canonical raven profile, and the neck ends in
@@ -105,13 +106,19 @@ FileTranscriptionQueue ─► AudioFileDecoder ─► [roles] DiarizationClient 
 - Files tab: plain jobs write `<name>.txt`; "By speaker" (macOS 14+) writes `<name>_roles.txt` as
   `[HH:MM:SS] Speaker N:` paragraphs. Mode, model and dictionary are fixed per job when queued;
   `cancel` stops one job (a pending one never starts), and a different mode is a new run.
-- Diarization is FluidAudio (CoreML) in `Helpers/Diarizer`, a separate macOS 14 package run as a
-  process: Corvin targets 11 and cannot import it, and FluidAudio's macOS 14 BNNS crash stays in the
-  helper. It loads models only from disk (`ModelHub.offlineMode`, no download path).
+- Diarization is NVIDIA Nemotron 3 Diarization (8-speaker streaming Sortformer, `offline` preset,
+  30 s context) through FluidAudio's CoreML port (`Nemotron3Diarizer`) in `Helpers/Diarizer`, a
+  separate macOS 14 package run as a process: Corvin targets 11 and cannot import it, and FluidAudio's
+  macOS 14 BNNS crash stays in the helper. It loads models only from disk (`Nemotron3Models.load`,
+  `ModelHub.offlineMode`, no download path). The first run after an install compiles the model for
+  the Neural Engine (~45 s once); after that two minutes of audio take under a second.
   Dev runs without a bundle: `CORVIN_DIARIZE_PATH=Helpers/Diarizer/.build/release/corvin-diarize`.
-- `DiarizationModelStore` installs the 21-file model set (sha256 each, atomic swap, fingerprint for
+- `DiarizationModelStore` installs the model set (sha256 each, atomic swap, fingerprint for
   updates) from the manifest's `diarization` section, falling back to a compiled-in entry.
-  `DiarizationClient.helperAPI` must match the entry's `helperAPI`.
+  `DiarizationClient.helperAPI` must match the entry's `helperAPI`: 1 was pyannote (still published
+  for 1.5.0–1.5.2), 2 is Nemotron (1.5.3+). The `installed.json` marker records the set's
+  `helperAPI` and top-level names; a set of another layout reads as not installed, so the pane
+  offers the download.
 - `SpeakerTranscriptBuilder` (pure, tuned on real meetings): max-overlap attribution, turn
   boundaries snapped to sentence ends (±1 s), short runs absorbed, runs split at whisper's
   leading-dash turn markers. Token timestamps are enough; DTW gave nothing and needs flash

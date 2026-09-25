@@ -9,7 +9,7 @@ import CryptoKit
 /// ignore the section: JSONDecoder skips keys it does not know.
 struct DiarizationModelEntry: Decodable, Equatable {
     struct File: Decodable, Equatable {
-        /// Relative to the models directory, e.g. `Segmentation.mlmodelc/model.mil`.
+        /// Relative to the models directory, e.g. `Nemotron3Diarizer_offline.mlmodelc/model.mil`.
         let path: String
         let url: URL
         let sha256: String
@@ -25,6 +25,11 @@ struct DiarizationModelEntry: Decodable, Equatable {
     let files: [File]
 
     var sizeBytes: Int64 { files.reduce(0) { $0 + $1.sizeBytes } }
+
+    /// First path components, e.g. `Nemotron3Diarizer_offline.mlmodelc`.
+    var roots: [String] {
+        Array(Set(files.compactMap { $0.path.split(separator: "/").first.map(String.init) })).sorted()
+    }
 
     /// Identity of the whole set. Stored on install; a different value in the
     /// manifest means an update is available.
@@ -65,6 +70,10 @@ final class DiarizationModelStore: ObservableObject {
     private struct InstalledMarker: Codable {
         let id: String
         let fingerprint: String
+        /// Absent in markers written before helperAPI 2, which were all 1.
+        let helperAPI: Int?
+        /// Top-level names of the installed set; absent in the same old markers.
+        let roots: [String]?
     }
 
     init(modelsDirectory: URL? = nil) {
@@ -88,7 +97,7 @@ final class DiarizationModelStore: ObservableObject {
 
     /// Re-reads what is on disk. Cheap; call when the settings pane appears.
     func refresh() {
-        guard let marker = readMarker(), requiredModelsExist() else {
+        guard let marker = readMarker(), isReadable(marker) else {
             isInstalled = false
             updateAvailable = false
             return
@@ -135,7 +144,8 @@ final class DiarizationModelStore: ObservableObject {
                 progress = Double(done) / Double(total)
             }
 
-            let marker = InstalledMarker(id: entry.id, fingerprint: entry.fingerprint)
+            let marker = InstalledMarker(id: entry.id, fingerprint: entry.fingerprint,
+                                         helperAPI: entry.helperAPI, roots: entry.roots)
             try JSONEncoder().encode(marker).write(to: staging.appendingPathComponent(Self.markerName))
 
             if FileManager.default.fileExists(atPath: directory.path) {
@@ -185,12 +195,15 @@ final class DiarizationModelStore: ObservableObject {
         return try? JSONDecoder().decode(InstalledMarker.self, from: data)
     }
 
-    /// What corvin-diarize loads. Checked by name rather than against the
-    /// current entry's file list: an installed older set stays usable while
-    /// its update is pending, even if the new entry lists different files.
-    private func requiredModelsExist() -> Bool {
-        ["Segmentation.mlmodelc", "FBank.mlmodelc", "Embedding.mlmodelc", "PldaRho.mlmodelc", "plda-parameters.json"]
-            .allSatisfy { FileManager.default.fileExists(atPath: directory.appendingPathComponent($0).path) }
+    /// Whether the bundled helper can run on the installed set. Checked
+    /// against what the marker says was installed, not the current entry: an
+    /// older set of the same layout stays usable while its update is pending.
+    /// A set of another layout (pyannote under a Nemotron helper) does not, and
+    /// shows as not installed, so the pane offers the download.
+    private func isReadable(_ marker: InstalledMarker) -> Bool {
+        guard (marker.helperAPI ?? 1) == DiarizationClient.helperAPI,
+              let roots = marker.roots, !roots.isEmpty else { return false }
+        return roots.allSatisfy { FileManager.default.fileExists(atPath: directory.appendingPathComponent($0).path) }
     }
 
     /// `URLSession.download(from:)` is macOS 12+; this runs on 11.
@@ -229,37 +242,29 @@ extension DiarizationModelEntry {
     /// Used when the manifest is unreachable or has no usable entry. Generated
     /// from the same revision `scripts/generate-models-manifest.py` publishes.
     static let bundled: DiarizationModelEntry = {
-        let revision = "1ed7a662fdc7109e36d822db793ee6eebdaf8594"
-        let base = "https://huggingface.co/FluidInference/speaker-diarization-coreml/resolve/\(revision)/"
-        let files: [(String, String, Int64)] = [
-            ("Segmentation.mlmodelc/analytics/coremldata.bin", "64265f8e7ad41a5f68d630c15288c2499cca5892ad49e20096819cdeac004cdb", 243),
-            ("Segmentation.mlmodelc/coremldata.bin", "ea51481b8bd3e496ad3cf16f066ddaa37f20e8772eaac76b3393c28de20e06bc", 812),
-            ("Segmentation.mlmodelc/metadata.json", "88dbf0b07208fe142e1729c2b4c974ad3599fcb2ae5d5f18fce782b225384124", 3410),
-            ("Segmentation.mlmodelc/model.mil", "d37e4ce30b406a6b34f765f769b9baed3178cc0c2b2e299c641daa43a052dd3f", 43063),
-            ("Segmentation.mlmodelc/weights/weight.bin", "c3189a64946c75bc24fcb98afe89ad78c52bdbadfdf65e857fb1b81e2cc9fbb2", 5959360),
-            ("FBank.mlmodelc/analytics/coremldata.bin", "0e8bd3a8b82ac123580989f490e4d9245127c535857630b543311268accc3f0a", 243),
-            ("FBank.mlmodelc/coremldata.bin", "57ac436bb0671cbb5527a339134d695f752eb77f7a18966b93c6835335595759", 853),
-            ("FBank.mlmodelc/metadata.json", "2623785f5d186893b82d01e84aa33a7704ef763c3309e02055f22dc9d871ce9a", 3409),
-            ("FBank.mlmodelc/model.mil", "27aaeb21569e81bdbe2eef87789f50a37cfea800039bd134448a9417de2f30ed", 15667),
-            ("FBank.mlmodelc/weights/weight.bin", "9e83fdd3ea78064b078069e4d9141603c61c47a27fd19e7e3142ff7476f8db36", 1776896),
-            ("Embedding.mlmodelc/analytics/coremldata.bin", "8d6706436639b53830b4dbe8aaf9c9a843f7f582d63e16f3cb8bb7c6ccd58682", 243),
-            ("Embedding.mlmodelc/coremldata.bin", "4a705bac27d151d9642f37609296042a15602a42253039e0921dc9e75da7e004", 704),
-            ("Embedding.mlmodelc/metadata.json", "1854371eb6b438fb8aeac96afb45c999af7902581c06afdfcd7ff3cb1ce66be5", 2818),
-            ("Embedding.mlmodelc/model.mil", "22fa958aef72a561c21f874a07cbdcd30fdf40ee961c0bc2fb67c119273b46d3", 78432),
-            ("Embedding.mlmodelc/weights/weight.bin", "99356b2985b8d43880a657024d941d450b38820451ccff903f76ed4e52d1868b", 13412288),
-            ("PldaRho.mlmodelc/analytics/coremldata.bin", "8940ea6044dbcbefa22da8cc41e0b485e1fb5ed89aecaf37c6e0c483a97ddcd7", 243),
-            ("PldaRho.mlmodelc/coremldata.bin", "4d9741477f721c79b09fcdfe455110c4b7d4272e2de3496bf1729d966d3ee418", 763),
-            ("PldaRho.mlmodelc/metadata.json", "b314cf25a93e46b4076883a6f5a2f8848b73c3851bd9d36074d067f35a1c7945", 2749),
-            ("PldaRho.mlmodelc/model.mil", "83aee2e5310d19b5f202aea97d07a0e12102556d1b32ef3ed08b36f7f9725041", 7613),
-            ("PldaRho.mlmodelc/weights/weight.bin", "80f7d229202636d372428c90596f11a91545f07da77259f07153aaf225914a36", 200192),
-            ("plda-parameters.json", "38ee28d4269c076cef254ee760bbd811f0738a92e0f01f9699ad372828c5de8f", 89416),
+        let revision = "1b0b133f6f8820292010afd776d8f9fbc9fca17e"
+        let base = "https://huggingface.co/FluidInference/nemotron-3-diarization-coreml/resolve/\(revision)/"
+        // (local path, repo path, sha256, size): the helper reads one flat
+        // directory, the repo keeps the preset under monolithic/v2.
+        let bundle = "Nemotron3Diarizer_offline.mlmodelc"
+        let files: [(String, String, String, Int64)] = [
+            ("\(bundle)/analytics/coremldata.bin", "monolithic/v2/\(bundle)/analytics/coremldata.bin",
+             "491594df92282a4f2cef65e96d236e210a5c4627063e37e822ec858aaaad416d", 243),
+            ("\(bundle)/coremldata.bin", "monolithic/v2/\(bundle)/coremldata.bin",
+             "8b790c919c65744648c17290a26d3371e0e55db655310e7f8445080757b0bf08", 758),
+            ("\(bundle)/model.mil", "monolithic/v2/\(bundle)/model.mil",
+             "ea5673d9e9ec785e7c8fb628acd82f9f86214c46b6584eaacdb6faddcb3f0277", 505274),
+            ("\(bundle)/weights/weight.bin", "monolithic/v2/\(bundle)/weights/weight.bin",
+             "bab76e5f190d0e4a4e174e7fcb1e9beea58c6b2be56e665e2cac8fba6d10f7f1", 198654080),
+            ("learnable_sil_emb.bin", "learnable_sil_emb.bin",
+             "d4417b3c0eabdf7c47032fac2b5b5a7ee83d819a6ddda8fd8eaf74e2b5cc4ac7", 2048),
         ]
         return DiarizationModelEntry(
-            id: "fluid-offline-1ed7a66",
+            id: "nemotron3-offline-1b0b133",
             revision: revision,
             minAppVersion: nil,
-            helperAPI: 1,
-            files: files.map { File(path: $0.0, url: URL(string: base + $0.0)!, sha256: $0.1, sizeBytes: $0.2) }
+            helperAPI: 2,
+            files: files.map { File(path: $0.0, url: URL(string: base + $0.1)!, sha256: $0.2, sizeBytes: $0.3) }
         )
     }()
 }

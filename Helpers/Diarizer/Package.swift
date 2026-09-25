@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
         // traits: [] drops the NeMo text-normalization engine (~8 MB per slice),
         // which diarization never uses.
-        .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.15.7", traits: []),
+        .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.17.4", traits: []),
     ],
     targets: [
         .executableTarget(

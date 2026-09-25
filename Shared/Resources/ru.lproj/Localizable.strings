@@ -318,6 +318,19 @@
 "menu.checkUpdates" = "Проверить обновления…";
 "menu.about" = "О программе";
 "menu.quit" = "Выход";
+
+/* Main menu (shown while a window is open) */
+"menu.app.hide" = "Скрыть Corvin";
+"menu.edit" = "Правка";
+"menu.edit.undo" = "Отменить";
+"menu.edit.redo" = "Повторить";
+"menu.edit.cut" = "Вырезать";
+"menu.edit.copy" = "Скопировать";
+"menu.edit.paste" = "Вставить";
+"menu.edit.selectAll" = "Выбрать все";
+"menu.window" = "Окно";
+"menu.window.minimize" = "Свернуть";
+"menu.window.close" = "Закрыть";
 "menu.update.updating" = "Обновление…";
 "menu.update.downloading" = "Загрузка…";
 "menu.update.downloadingPercent" = "Загрузка %@";

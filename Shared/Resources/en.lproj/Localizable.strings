@@ -318,6 +318,19 @@
 "menu.checkUpdates" = "Check for Updates…";
 "menu.about" = "About";
 "menu.quit" = "Quit";
+
+/* Main menu (shown while a window is open) */
+"menu.app.hide" = "Hide Corvin";
+"menu.edit" = "Edit";
+"menu.edit.undo" = "Undo";
+"menu.edit.redo" = "Redo";
+"menu.edit.cut" = "Cut";
+"menu.edit.copy" = "Copy";
+"menu.edit.paste" = "Paste";
+"menu.edit.selectAll" = "Select All";
+"menu.window" = "Window";
+"menu.window.minimize" = "Minimize";
+"menu.window.close" = "Close";
 "menu.update.updating" = "Updating…";
 "menu.update.downloading" = "Downloading…";
 "menu.update.downloadingPercent" = "Downloading %@";

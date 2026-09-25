@@ -258,6 +258,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         activateAndShow(window)
     }
 
+    /// "Corvin → Settings…" and ⌘, in the main menu (`MainMenu`).
+    @objc func showSettingsFromMenu(_ sender: Any?) {
+        showSettingsWindow()
+    }
+
     func showSettingsWindow(tab: SettingsTab = .settings) {
         if let w = settingsWindow {
             settingsTabSelection.tab = tab

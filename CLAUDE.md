@@ -226,7 +226,8 @@ Shared/Core/         — SessionState, SessionManager, TranscriptionEngine, Mode
 Shared/Networking/   — IPC protocol (LocalIPCProtocol), TranscriptionModels
 Shared/UI/           — ProPaywallView (cross-platform)
 Shared/Resources/    — Localizable.strings/.stringsdict, InfoPlist.strings, AppShortcuts.strings (en, ru, es)
-macOS/App/           — AppDelegate, CorvinApp (@main macOS)
+macOS/App/           — AppDelegate, CorvinApp (@main macOS: plain AppKit, no SwiftUI `App` — its required
+                       Settings scene opened a blank window on ⌘,), MainMenu (⌘, → the real settings)
 macOS/Services/      — HotkeyService, AudioCaptureService, AccessibilityService
 macOS/UI/            — StatusBarController, FloatingIndicator, Settings, History, Onboarding, ModelManager views
 iOS/App/             — CorviniOSApp (@main iOS), iOSAppState

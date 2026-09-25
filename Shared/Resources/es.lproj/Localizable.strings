@@ -318,6 +318,19 @@
 "menu.checkUpdates" = "Buscar actualizaciones…";
 "menu.about" = "Acerca de";
 "menu.quit" = "Salir";
+
+/* Main menu (shown while a window is open) */
+"menu.app.hide" = "Ocultar Corvin";
+"menu.edit" = "Edición";
+"menu.edit.undo" = "Deshacer";
+"menu.edit.redo" = "Rehacer";
+"menu.edit.cut" = "Cortar";
+"menu.edit.copy" = "Copiar";
+"menu.edit.paste" = "Pegar";
+"menu.edit.selectAll" = "Seleccionar todo";
+"menu.window" = "Ventana";
+"menu.window.minimize" = "Minimizar";
+"menu.window.close" = "Cerrar";
 "menu.update.updating" = "Actualizando…";
 "menu.update.downloading" = "Descargando…";
 "menu.update.downloadingPercent" = "Descargando %@";

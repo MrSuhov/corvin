@@ -10,13 +10,11 @@ extension Notification.Name {
     static let pipWokeFromSuspension = Notification.Name("pipWokeFromSuspension")
 }
 
-// The Picture-in-Picture keep-alive is compiled in only when PIP_KEEPALIVE is
-// defined — see CORVIN_PIP_KEEPALIVE in project.yml. App Store builds ship
-// without it: a PiP window that renders nothing but a placeholder image exists
-// purely to keep the process alive, which App Review reads as a background-mode
-// workaround (guideline 2.5.4) and a hidden feature (2.3.1). The silent-audio
-// layer in BackgroundKeepAliveService holds the process on its own.
-#if PIP_KEEPALIVE
+// The Picture-in-Picture keep-alive ships in every build (the owner's call,
+// 2026-10-05). It used to sit behind a build switch for App Review — a PiP window
+// that shows only a placeholder reads as a background-mode workaround (2.5.4);
+// that caution was lifted, and the switch removed so it cannot be turned off by
+// accident. The silent-audio layer in BackgroundKeepAliveService runs alongside.
 
 /// Manages Picture-in-Picture mode for background recording.
 /// Uses AVSampleBufferDisplayLayer for live content (no playback controls).
@@ -624,32 +622,3 @@ extension PiPService: AVPictureInPictureSampleBufferPlaybackDelegate {
         completionHandler()
     }
 }
-
-#else
-
-/// Stub compiled in place of the Picture-in-Picture keep-alive.
-///
-/// Everything the rest of the app calls stays here as a no-op, so removing the
-/// layer is a build setting rather than a code change. `isPiPPossible` and
-/// `isPiPActive` report false, which is honest: there is no PiP window.
-@MainActor
-final class PiPService: ObservableObject {
-    static let shared = PiPService()
-
-    @Published var isPiPActive = false
-    @Published var isPiPPossible = false
-    @Published var errorMessage: LocalizedMessage?
-
-    private init() {}
-
-    func setMaintain(_ maintain: Bool) {}
-    func setIdle(_ idle: Bool) {}
-    func setRecording(_ recording: Bool) {}
-    func startPiP() {}
-    func stopPiP() {}
-    func reassertIfNeeded() {}
-    func rebuildAfterMediaServicesReset() {}
-    func refreshPiP() {}
-}
-
-#endif

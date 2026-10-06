@@ -15,6 +15,7 @@ struct ConsolidatedSettingsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 section("settings.tab.general".localized) { GeneralSettingsView() }
                 section("settings.tab.language".localized) { LanguageSettingsView() }
+                section("dictation.dictionary.title".localized) { DictationDictionarySection() }
                 section("settings.tab.indicator".localized) { IndicatorSettingsView() }
                 section("settings.tab.layout".localized) { LayoutSwitchSettingsView() }
                 section("test.call.title".localized) { CallSettingsView() }

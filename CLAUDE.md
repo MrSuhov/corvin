@@ -72,6 +72,10 @@ Menubar app. User holds fn key to record, releases to transcribe, text auto-inse
 
 ### iOS
 Keyboard Extension (KeyboardKit) + host app. Push-To-Talk via mic button tap or long press any key (≥0.5s). Host app runs whisper.cpp transcription, keyboard extension communicates via localhost socket IPC.
+The host app stays alive in the background through the silent-audio layer (`BackgroundKeepAliveService`)
+and the Picture-in-Picture keep-alive (`PiPService`). **Every build ships with PiP** — the owner's
+call; there is no build switch, so do not add one back. "PiP не поддерживается" in the simulator is
+expected: the simulator has no PiP.
 
 ### State Machine Flow
 
@@ -97,6 +101,13 @@ AudioCaptureService.onSamples ─► SpeechRecognizer ─► TranscriptEvent ─
 - `TranscriptProcessor` transforms the finished utterance. One with `modifiesText` disables
   realtime insertion — typed text cannot be taken back.
 - Setting: `DictationSettings.realtimeKey` (`realtimeDictation`), toggle in General settings.
+- **Dictation dictionary** (`DictationDictionary`, separate from the Files vocabularies): one text
+  per device, `#` lines are notes, the rest are terms for whisper's prompt — fn dictation on macOS
+  (`DictationCoordinator` passes `activeTerms` to both recognizers) and every keyboard dictation on
+  iOS (`TranscriptionService`, read from the app group). Fitted to 100 tokens on the transcription
+  thread (`TranscriptionOptions.promptTerms`), because streaming appends the recent text and whisper
+  keeps only the *last* 224 prompt tokens — the start it drops would be the dictionary. Off by
+  default: a Russian prompt pulls auto-detect towards Russian. GigaAM takes no prompt and ignores it.
 
 ### File transcription (macOS)
 

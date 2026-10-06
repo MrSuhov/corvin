@@ -8,6 +8,9 @@ struct iOSSettingsView: View {
     @AppStorage("autoCleanupPeriod", store: UserDefaults(suiteName: "group.com.corvinvoice.app"))
     private var autoCleanupPeriod: String = "never"
 
+    @AppStorage(DictationDictionary.enabledKey, store: UserDefaults(suiteName: SharedDefaults.appGroup))
+    private var dictionaryEnabled = false
+
     var body: some View {
         NavigationView {
             Form {
@@ -72,6 +75,22 @@ struct iOSSettingsView: View {
                             Text("settings.language.selectKeyboardLanguages".localized)
                             Spacer()
                             Text("\(localization.enabledKeyboardLanguages.count)")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                // Dictation dictionary
+                Section(header: Text("dictation.dictionary.title".localized)) {
+                    NavigationLink {
+                        DictationDictionaryView()
+                    } label: {
+                        HStack {
+                            Text("dictation.dictionary.title".localized)
+                            Spacer()
+                            Text(dictionaryEnabled
+                                 ? "dictation.dictionary.on".localized
+                                 : "dictation.dictionary.off".localized)
                                 .foregroundColor(.secondary)
                         }
                     }

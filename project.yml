@@ -13,29 +13,11 @@ settings:
     MARKETING_VERSION: "1.5.4"
     CURRENT_PROJECT_VERSION: "1"
 
-    # --- Picture-in-Picture keep-alive (iOS) ---
-    # The single switch. NO compiles PiPService down to a no-op stub; YES keeps
-    # the real layer. Nothing else needs editing.
-    #
-    # On (YES) since 2026-09-19, at the owner's call: TestFlight builds without
-    # it lost the PiP keep-alive. Mind App Review: a PiP window that shows only a
-    # placeholder image, kept on screen so the process is not suspended, is what
-    # it reads as a background-mode workaround (2.5.4) and a hidden feature
-    # (2.3.1) — an App Store submission may need NO again. The silent-audio layer
-    # in BackgroundKeepAliveService holds the process by itself (verified on
-    # device across 44 minutes in the background).
-    CORVIN_PIP_KEEPALIVE: YES
-    # Indirection so one YES/NO above drives the compilation condition; Xcode has
-    # no way to branch a setting on another setting's value directly.
-    CORVIN_PIP_FLAG_YES: PIP_KEEPALIVE
-    CORVIN_PIP_FLAG_NO: ""
+    # The PiP keep-alive (iOS) ships in every build; there is no switch any more
+    # (see iOS/Services/PiPService.swift).
   configs:
-    # Spelled out per config rather than using $(inherited): at project level
-    # there is nothing to inherit from, so DEBUG would silently disappear.
     Debug:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(CORVIN_PIP_FLAG_$(CORVIN_PIP_KEEPALIVE))"
-    Release:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(CORVIN_PIP_FLAG_$(CORVIN_PIP_KEEPALIVE))"
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
 
 packages:
   KeyboardKit:

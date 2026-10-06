@@ -117,20 +117,12 @@ struct StatusView: View {
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(12)
 
-                // Background mode. The wording follows the build: with the PiP
-                // layer compiled out there is no "картинка в картинке" to
-                // explain, and saying otherwise would describe a window the user
-                // will never see.
+                // Background mode: the silent-audio layer plus the PiP window.
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle(isOn: $keepAlive.isEnabled) {
                         HStack {
-                            #if PIP_KEEPALIVE
                             Image(systemName: "pip.fill")
                                 .foregroundColor(.blue)
-                            #else
-                            Image(systemName: "waveform.circle.fill")
-                                .foregroundColor(.blue)
-                            #endif
                             Text("background.title".localized)
                                 .fontWeight(.medium)
                         }
@@ -153,7 +145,6 @@ struct StatusView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    #if PIP_KEEPALIVE
                     if !pipService.isPiPPossible {
                         Text("background.pipUnavailable".localized)
                             .font(.caption)
@@ -165,12 +156,6 @@ struct StatusView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    #else
-                    Text("background.explanation".localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    #endif
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
@@ -243,11 +228,7 @@ struct StatusView: View {
     }
 
     private var holdingDescription: String {
-        #if PIP_KEEPALIVE
         return (pipService.isPiPActive ? "background.active.audioAndPiP" : "background.active.audio").localized
-        #else
-        return "background.active".localized
-        #endif
     }
 
     @ViewBuilder

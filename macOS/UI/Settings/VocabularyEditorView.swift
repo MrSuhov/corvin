@@ -11,9 +11,7 @@ struct VocabularyEditorView: View {
     @State private var name = ""
     @State private var termsText = ""
     /// Terms that fit the prompt, when the model is loaded to count them.
-    @State private var usedTerms: Int?
-    /// Bumped per edit so a slow count for older text never overwrites a newer one.
-    @State private var fitGeneration = 0
+    @StateObject private var fit = PromptFitCounter()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -115,11 +113,11 @@ struct VocabularyEditorView: View {
     private var terms: [String] { VocabularyStore.parseTerms(termsText) }
 
     private var isTrimmed: Bool {
-        usedTerms.map { $0 < terms.count } ?? false
+        fit.used.map { $0 < terms.count } ?? false
     }
 
     private var countLabel: String {
-        if let used = usedTerms, used < terms.count {
+        if let used = fit.used, used < terms.count {
             return "vocab.fit".localized(with: used, terms.count)
         }
         return "vocab.count".localized(with: terms.count)
@@ -132,7 +130,7 @@ struct VocabularyEditorView: View {
         let vocabulary = vocabularies.vocabularies.first { $0.id == id }
         name = vocabulary?.name ?? ""
         termsText = vocabulary?.terms.joined(separator: "\n") ?? ""
-        usedTerms = nil
+        fit.reset()
         scheduleFit()
     }
 
@@ -146,24 +144,8 @@ struct VocabularyEditorView: View {
         vocabularies.update(vocabulary)
     }
 
-    /// Counts how many terms fit whisper's prompt. Only with a model already
-    /// in memory: loading one just to count would take seconds and gigabytes.
     private func scheduleFit() {
-        fitGeneration += 1
-        let generation = fitGeneration
-        let current = terms
-        guard transcriptionEngine.isModelLoaded, !current.isEmpty else {
-            usedTerms = nil
-            return
-        }
-        let engine = transcriptionEngine
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.6) {
-            guard let fitted = try? engine.fitPrompt(terms: current) else { return }
-            DispatchQueue.main.async {
-                guard generation == fitGeneration else { return }
-                usedTerms = fitted.used
-            }
-        }
+        fit.schedule(terms: terms, engine: transcriptionEngine, maxTokens: 200)
     }
 }
 

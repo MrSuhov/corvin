@@ -280,12 +280,10 @@
 // MARK: - iOS Background Mode
 "background.title" = "Modo en segundo plano";
 "background.recovering" = "Recuperando…";
-"background.active" = "Activo";
 "background.active.audio" = "Activo (audio)";
 "background.active.audioAndPiP" = "Activo (audio + ventana PiP)";
 "background.pipUnavailable" = "La imagen dentro de imagen no está disponible en este dispositivo: el modo en segundo plano se mantiene solo con el canal de audio.";
 "background.explanation.pip" = "Déjalo activado: Corvin recuerda el ajuste y reactiva el modo en segundo plano en cada arranque, incluso después de que otra app ocupe la ventana de imagen dentro de imagen.\n\nEl micrófono no está encendido de forma continua: se activa solo mientras mantienes pulsada la tecla del micrófono.";
-"background.explanation" = "Déjalo activado: Corvin recuerda el ajuste y reactiva el modo en segundo plano en cada arranque.\n\nEl micrófono no está encendido de forma continua: se activa solo mientras mantienes pulsada la tecla del micrófono.";
 
 // MARK: - iOS Recording and Files
 "record.test.title" = "Prueba de grabación";
@@ -542,3 +540,19 @@
 "update.found.install" = "Actualizar";
 "update.later" = "Más tarde";
 "update.error.title" = "No se pudo buscar actualizaciones";
+
+/* Dictation dictionary */
+"dictation.dictionary.title" = "Diccionario de dictado";
+"dictation.dictionary.enabled" = "Usar al dictar";
+"dictation.dictionary.on" = "Activado";
+"dictation.dictionary.off" = "Desactivado";
+"dictation.dictionary.hint" = "El modelo ve estas palabras antes de cada dictado y las escribe igual. Las líneas que empiezan con # son notas. Pon primero lo importante: una lista larga se recorta por el final.";
+"dictation.dictionary.unsupported" = "%@ no usa el diccionario: funciona con los modelos Whisper.";
+"dictation.dictionary.import" = "Cargar desde archivo…";
+"dictation.dictionary.export" = "Guardar en archivo…";
+"dictation.dictionary.reset" = "Restaurar ejemplo";
+"dictation.dictionary.replace.title" = "¿Reemplazar el diccionario?";
+"dictation.dictionary.replace.message" = "El texto actual del diccionario se reemplazará.";
+"dictation.dictionary.replace.confirm" = "Reemplazar";
+"dictation.dictionary.fileName" = "Diccionario de dictado";
+"dictation.dictionary.example" = "# Diccionario de dictado: palabras que el reconocedor debe esperar:\n# nombres, jerga profesional, palabras de ortografía poco evidente.\n# Una palabra o frase por línea, escrita tal como debe aparecer en el texto.\n# Pon primero lo importante: una lista larga se recorta por el final.\n# Las líneas que empiezan con # son notas; el modelo no las ve.\n# Ejemplo (en ruso): un nombre, una palabra de jerga y una ortografía difícil.\n\nКорвин\nдеплой\nвайбкодинг\n";

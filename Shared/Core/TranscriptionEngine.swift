@@ -38,6 +38,12 @@ struct TranscriptionOptions {
     /// Terms the decoder should expect. Given to every chunk, since chunks are
     /// decoded independently.
     var prompt: String?
+    /// Terms to fit into a prompt of at most `promptTokens` on the
+    /// transcription thread, where the model is already loaded and locked —
+    /// dictation passes its dictionary this way instead of fitting it up front.
+    /// Ignored when `prompt` is set.
+    var promptTerms: [String]?
+    var promptTokens = 200
     /// Collect per-word timestamps, which attributing words to speakers needs.
     var wordTimestamps = false
     /// Which model to run. `nil` is the app's active model; any other id is
@@ -85,6 +91,9 @@ class TranscriptionEngine: ObservableObject {
     private var loadedLanguages: [String]?
     private var loadedModelId: String?
     private let whisperLock = NSLock()
+    /// The last fitted prompt, under `whisperLock`: streaming dictation asks
+    /// for the same terms every second, and tokenising them each time is waste.
+    private var promptCache: (terms: [String], maxTokens: Int, modelID: String?, fitted: (prompt: String?, used: Int))?
     private var keepAliveTimer: DispatchSourceTimer?
     /// Interval between keep-alive pings that prevent macOS from paging model out of RAM
     private let keepAliveInterval: TimeInterval = 120 // 2 minutes
@@ -202,6 +211,7 @@ class TranscriptionEngine: ObservableObject {
         }
         loadedModelId = model.id
         loadedLanguages = model.languages
+        setModelLoaded(true)
         flog("model loaded successfully")
     }
 
@@ -220,6 +230,7 @@ class TranscriptionEngine: ObservableObject {
         }
         loadedModelId = model.id
         loadedLanguages = model.languages
+        setModelLoaded(true)
         flog("model loaded successfully (\(model.family.rawValue))")
         #else
         flog("\(model.family.rawValue) models are not supported in this build")
@@ -306,16 +317,25 @@ class TranscriptionEngine: ObservableObject {
 
         whisperLock.lock()
         defer { whisperLock.unlock() }
-        // A model without prompt support: no terms fit.
         guard hasContextLocked else { throw TranscriptionError.noModel }
-        guard let ctx = whisperContext else { return (nil, 0) }
+        return fittedPromptLocked(terms: terms, maxTokens: maxTokens)
+    }
 
+    /// `fitPrompt` for a caller already holding `whisperLock` on a loaded model.
+    private func fittedPromptLocked(terms: [String], maxTokens: Int) -> (prompt: String?, used: Int) {
+        // A model without prompt support: no terms fit.
+        guard !terms.isEmpty, let ctx = whisperContext else { return (nil, 0) }
+        if let cache = promptCache, cache.terms == terms, cache.maxTokens == maxTokens,
+           cache.modelID == loadedModelId {
+            return cache.fitted
+        }
         var fitted: (prompt: String?, used: Int) = (nil, 0)
         for count in 1...terms.count {
             let candidate = Self.prompt(from: Array(terms.prefix(count)))
             guard whisper_token_count(ctx, candidate) <= maxTokens else { break }
             fitted = (candidate, count)
         }
+        promptCache = (terms, maxTokens, loadedModelId, fitted)
         return fitted
     }
 
@@ -327,6 +347,7 @@ class TranscriptionEngine: ObservableObject {
 
     /// `transcribe(audioData:)` for audio that is already 16 kHz mono Float32.
     func transcribe(samples: [Float],
+                    options: TranscriptionOptions = .plain,
                     onProgress: ((Int, Int) -> Void)? = nil,
                     shouldYield: (() -> Bool)? = nil,
                     shouldCancel: (() -> Bool)? = nil) async throws -> TranscriptionResult {
@@ -337,7 +358,7 @@ class TranscriptionEngine: ObservableObject {
         }
 
         flog("starting transcription with \(samples.count) samples of audio")
-        let result = try await run(options: .plain, onProgress: onProgress,
+        let result = try await run(options: options, onProgress: onProgress,
                                    shouldYield: shouldYield, shouldCancel: shouldCancel) {
             samples
         }
@@ -386,7 +407,10 @@ class TranscriptionEngine: ObservableObject {
                 // Split into chunks (~25s each, cut at silence) for reliable processing
                 self.whisperLock.lock()
                 let chunkSize = self.maxChunkSamplesLocked
+                let prompt = options.prompt
+                    ?? options.promptTerms.flatMap { self.fittedPromptLocked(terms: $0, maxTokens: options.promptTokens).prompt }
                 self.whisperLock.unlock()
+                if options.prompt == nil, let prompt { flog("prompt: \(prompt)") }
                 let chunks = Self.splitAtSilence(samples: samples, maxChunkSize: chunkSize)
                 flog("split into \(chunks.count) chunks (\(String(format: "%.1f", Float(samples.count) / 16000.0))s total)")
 
@@ -544,7 +568,7 @@ class TranscriptionEngine: ObservableObject {
                     }
 
                     let result = withExtendedLifetime(abortToken) {
-                        Self.withOptionalCString(options.prompt) { promptPtr in
+                        Self.withOptionalCString(prompt) { promptPtr in
                             var runParams = params
                             runParams.initial_prompt = promptPtr
                             // Without this whisper conditions only the first
@@ -574,7 +598,7 @@ class TranscriptionEngine: ObservableObject {
                     for i in 0..<nSegments {
                         guard let segText = whisper_full_get_segment_text(ctx, i) else { continue }
                         let text = String(cString: segText)
-                        if let prompt = options.prompt, Self.isPromptEcho(text, prompt: prompt) {
+                        if let prompt, Self.isPromptEcho(text, prompt: prompt) {
                             flog("chunk \(idx+1): dropped segment repeating the prompt")
                             continue
                         }
@@ -653,8 +677,13 @@ class TranscriptionEngine: ObservableObject {
     ///
     /// - Parameters:
     ///   - prompt: text the decoder treats as what was said just before.
+    ///   - promptTerms: dictionary terms, fitted into `promptTokens` and put
+    ///     before `prompt`. Whisper keeps the *last* 224 prompt tokens, so the
+    ///     two together must fit or the terms are what gets dropped.
     ///   - language: whisper language code, or nil to auto-detect.
-    func transcribeWindow(samples: [Float], prompt: String?, language: String?) throws -> WhisperWindowResult {
+    func transcribeWindow(samples: [Float], prompt: String?,
+                          promptTerms: [String]? = nil, promptTokens: Int = 100,
+                          language: String?) throws -> WhisperWindowResult {
         let myGeneration = try prepareContext()
 
         // whisper_full produces no segments for input under a second.
@@ -690,9 +719,12 @@ class TranscriptionEngine: ObservableObject {
             throw CancellationError()
         }
 
+        let dictionary = promptTerms.flatMap { fittedPromptLocked(terms: $0, maxTokens: promptTokens).prompt }
+        let fullPrompt = [dictionary, prompt].compactMap { $0 }.joined(separator: " ")
+
         let status: Int32 = withExtendedLifetime(abortToken) {
             Self.withOptionalCString(language) { languagePtr in
-                Self.withOptionalCString(prompt) { promptPtr in
+                Self.withOptionalCString(fullPrompt.isEmpty ? nil : fullPrompt) { promptPtr in
                     var runParams = params
                     runParams.language = languagePtr
                     runParams.initial_prompt = promptPtr
@@ -711,6 +743,10 @@ class TranscriptionEngine: ObservableObject {
         for i in 0..<whisper_full_n_segments(ctx) {
             let words = Self.readWords(ctx, segment: i, offset: 0)
             let text = whisper_full_get_segment_text(ctx, i).map { String(decoding: Self.bytes(of: $0), as: UTF8.self) } ?? ""
+            if let dictionary, Self.isPromptEcho(text, prompt: dictionary) {
+                flog("transcribeWindow: dropped segment repeating the dictionary")
+                continue
+            }
             segments.append(WhisperSegment(
                 text: text,
                 start: Double(whisper_full_get_segment_t0(ctx, i)) / 100,
@@ -819,10 +855,24 @@ class TranscriptionEngine: ObservableObject {
         return try string.withCString(body)
     }
 
+    /// Never waits on `whisperLock`: iOS reads this on the main thread when the
+    /// app becomes active, while a warmup may hold the lock for as long as a
+    /// first Metal compile takes — 1.5.4 did take the lock here, and the
+    /// launch watchdog (0x8BADF00D) killed the app on a hot iPhone.
     var isModelLoaded: Bool {
-        whisperLock.lock()
-        defer { whisperLock.unlock() }
-        return hasContextLocked
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        return modelLoaded
+    }
+
+    /// Mirrors `hasContextLocked` for `isModelLoaded`. Written under
+    /// `whisperLock` (where the context changes), read under `generationLock`.
+    private var modelLoaded = false
+
+    private func setModelLoaded(_ loaded: Bool) {
+        generationLock.lock()
+        modelLoaded = loaded
+        generationLock.unlock()
     }
 
     func unloadModel() {
@@ -906,6 +956,7 @@ class TranscriptionEngine: ObservableObject {
         #endif
         loadedModelId = nil
         loadedLanguages = nil
+        setModelLoaded(false)
     }
 
     /// Ties an `abort_callback` to the generation its run started on.

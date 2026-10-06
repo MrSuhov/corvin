@@ -136,9 +136,11 @@ final class DictationCoordinator {
     /// Nil when no model has been chosen.
     private func makeRecognizer(realtime: Bool) -> SpeechRecognizer? {
         guard let model = modelManager.activeModel else { return nil }
+        // Read per session, so an edit applies from the next key press.
+        let terms = model.supportsPrompt ? DictationDictionary.activeTerms : nil
         return realtime
-            ? WhisperStreamingRecognizer(engine: engine, displayName: model.name)
-            : WhisperBatchRecognizer(engine: engine, displayName: model.name)
+            ? WhisperStreamingRecognizer(engine: engine, displayName: model.name, promptTerms: terms)
+            : WhisperBatchRecognizer(engine: engine, displayName: model.name, promptTerms: terms)
     }
 
     private func makePipeline(processors: [TranscriptProcessor], modelUsed: String, realtime: Bool) -> TranscriptPipeline {

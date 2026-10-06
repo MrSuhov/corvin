@@ -188,6 +188,6 @@ must show Corvin's layout — the blue microphone key, and the locale key beside
 extension's keys belong to another process and cannot be waited on, so it can
 occasionally catch the system keyboard instead.
 
-Build the screenshots with `CORVIN_PIP_KEEPALIVE` set the way the submitted
-binary is built. With PiP compiled in, the record screen carries "PiP не
-поддерживается" — true of the simulator and only of the simulator.
+Every build carries the PiP keep-alive, so in the simulator the record screen
+reads "PiP не поддерживается" — true of the simulator and only of the
+simulator; a device never shows it.

@@ -280,12 +280,10 @@
 // MARK: - iOS Background Mode
 "background.title" = "Работа в фоне";
 "background.recovering" = "Восстанавливается…";
-"background.active" = "Активен";
 "background.active.audio" = "Активен (звук)";
 "background.active.audioAndPiP" = "Активен (звук + окно PiP)";
 "background.pipUnavailable" = "Окно «картинка в картинке» на этом устройстве недоступно — фон держится только звуковым каналом.";
 "background.explanation.pip" = "Оставьте включённым — Corvin запомнит настройку и будет сам поднимать фоновый режим при каждом запуске, в том числе после того, как другое приложение заняло окно «картинка в картинке».\n\nМикрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.";
-"background.explanation" = "Оставьте включённым — Corvin запомнит настройку и будет сам поднимать фоновый режим при каждом запуске.\n\nМикрофон телефона не включён постоянно — он активируется только в момент нажатия на кнопку микрофона.";
 
 // MARK: - iOS Recording and Files
 "record.test.title" = "Тест записи";
@@ -542,3 +540,19 @@
 "update.found.install" = "Обновить";
 "update.later" = "Позже";
 "update.error.title" = "Не удалось проверить обновления";
+
+/* Dictation dictionary */
+"dictation.dictionary.title" = "Словарь диктовки";
+"dictation.dictionary.enabled" = "Использовать при диктовке";
+"dictation.dictionary.on" = "Вкл.";
+"dictation.dictionary.off" = "Выкл.";
+"dictation.dictionary.hint" = "Модель видит эти слова перед каждой диктовкой и пишет их в том же виде. Строки, начинающиеся с #, — пояснения. Важное ставьте выше: длинный список обрезается с конца.";
+"dictation.dictionary.unsupported" = "Модель %@ не использует словарь — он сработает с моделями Whisper.";
+"dictation.dictionary.import" = "Загрузить из файла…";
+"dictation.dictionary.export" = "Сохранить в файл…";
+"dictation.dictionary.reset" = "Вернуть пример";
+"dictation.dictionary.replace.title" = "Заменить словарь?";
+"dictation.dictionary.replace.message" = "Текущий текст словаря будет заменён.";
+"dictation.dictionary.replace.confirm" = "Заменить";
+"dictation.dictionary.fileName" = "Словарь диктовки";
+"dictation.dictionary.example" = "# Словарь диктовки — слова, которые распознаватель должен ожидать:\n# имена, профессиональный жаргон, слова с неочевидным написанием.\n# Одно слово или фраза на строку, ровно в том написании, как нужно в тексте.\n# Важное ставьте выше: длинный список обрезается с конца.\n# Строки, начинающиеся с #, — пояснения, модель их не видит.\n# Ниже пример: имя, жаргон и слово с неочевидным написанием.\n\nКорвин\nдеплой\nвайбкодинг\n";

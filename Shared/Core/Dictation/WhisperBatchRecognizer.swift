@@ -8,13 +8,16 @@ final class WhisperBatchRecognizer: SpeechRecognizer {
 
     private let continuation: AsyncStream<TranscriptEvent>.Continuation
     private let engine: TranscriptionEngine
+    /// The dictation dictionary, fitted into a prompt on the transcription thread.
+    private let promptTerms: [String]?
     private let lock = NSLock()
     private var samples: [Float] = []
     private var cancelled = false
 
-    init(engine: TranscriptionEngine, displayName: String) {
+    init(engine: TranscriptionEngine, displayName: String, promptTerms: [String]? = nil) {
         self.engine = engine
         self.displayName = displayName
+        self.promptTerms = promptTerms
         var continuation: AsyncStream<TranscriptEvent>.Continuation!
         self.events = AsyncStream { continuation = $0 }
         self.continuation = continuation
@@ -32,7 +35,9 @@ final class WhisperBatchRecognizer: SpeechRecognizer {
         defer { continuation.finish() }
         let captured = takeSamples()
         flog("whisperBatch: transcribing \(captured.count) samples")
-        return try await engine.transcribe(samples: captured, shouldCancel: { [weak self] in
+        let options = TranscriptionOptions(promptTerms: promptTerms,
+                                           promptTokens: DictationDictionary.maxTokens)
+        return try await engine.transcribe(samples: captured, options: options, shouldCancel: { [weak self] in
             self?.isCancelled ?? true
         })
     }

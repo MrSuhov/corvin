@@ -31,6 +31,8 @@ final class WhisperStreamingRecognizer: SpeechRecognizer {
 
     private let continuation: AsyncStream<TranscriptEvent>.Continuation
     private let engine: TranscriptionEngine
+    /// The dictation dictionary, put before the recent text in every run.
+    private let promptTerms: [String]?
     private let queue = DispatchQueue(label: "com.corvin.whisperStreaming", qos: .userInitiated)
 
     // Guarded by `lock`.
@@ -48,9 +50,10 @@ final class WhisperStreamingRecognizer: SpeechRecognizer {
     private var language: String?
     private var failure: Error?
 
-    init(engine: TranscriptionEngine, displayName: String) {
+    init(engine: TranscriptionEngine, displayName: String, promptTerms: [String]? = nil) {
         self.engine = engine
         self.displayName = displayName
+        self.promptTerms = promptTerms
         var continuation: AsyncStream<TranscriptEvent>.Continuation!
         self.events = AsyncStream { continuation = $0 }
         self.continuation = continuation
@@ -138,6 +141,8 @@ final class WhisperStreamingRecognizer: SpeechRecognizer {
         do {
             result = try engine.transcribeWindow(samples: applyGain(window),
                                                  prompt: prompt(before: windowStart),
+                                                 promptTerms: promptTerms,
+                                                 promptTokens: DictationDictionary.maxTokens,
                                                  language: language)
         } catch {
             flog("whisperStreaming: run failed: \(error)")

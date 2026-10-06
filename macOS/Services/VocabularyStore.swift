@@ -62,15 +62,8 @@ final class VocabularyStore: ObservableObject {
         persist()
     }
 
-    /// One term per line; commas and semicolons separate terms too, so a list
-    /// pasted from a document works. Blank and repeated (case-insensitive)
-    /// entries are dropped, first spelling wins.
     static func parseTerms(_ text: String) -> [String] {
-        var seen = Set<String>()
-        return text
-            .components(separatedBy: CharacterSet(charactersIn: "\n\r,;"))
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+        TermList.parse(text)
     }
 
     // MARK: - Persistence

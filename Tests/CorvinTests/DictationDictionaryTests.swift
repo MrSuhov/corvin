@@ -53,6 +53,12 @@ final class DictationDictionaryTests: XCTestCase {
         XCTAssertNil(DictationDictionary.activeTerms)
     }
 
+    func testSaveReadsBack() {
+        XCTAssertTrue(DictationDictionary.save("Корвин\nдеплой"))
+        XCTAssertEqual(DictationDictionary.text, "Корвин\nдеплой")
+        XCTAssertEqual(DictationDictionary.activeTerms, nil, "saving the text does not turn it on")
+    }
+
     func testOffByDefault() {
         XCTAssertFalse(DictationDictionary.isEnabled)
     }

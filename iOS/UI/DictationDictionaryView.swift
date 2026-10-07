@@ -4,10 +4,16 @@ import UniformTypeIdentifiers
 /// The dictation dictionary on iOS: terms every keyboard dictation hands
 /// whisper as a prompt. Stored in the app group, where the host app reads it
 /// for each transcription.
+///
+/// The text is a draft until Save: the settings list builds this view once, so
+/// its initial state can be stale — the stored values are loaded on appear.
 struct DictationDictionaryView: View {
     @EnvironmentObject var modelManager: ModelManager
 
-    @State private var text = DictationDictionary.text
+    @State private var text = ""
+    /// What the store holds; the draft differs from it until Save.
+    @State private var savedText = ""
+    @State private var saveFailed = false
     @State private var enabled = DictationDictionary.isEnabled
     @State private var importing = false
     /// A file read but not applied yet: the user's own text is about to go.
@@ -32,7 +38,9 @@ struct DictationDictionaryView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .frame(minHeight: 220)
-                    .onChange(of: text) { DictationDictionary.text = $0 }
+                    .onChange(of: text) { _ in saveFailed = false }
+            } header: {
+                saveStatus
             } footer: {
                 Text("vocab.count".localized(with: DictationDictionary.terms(from: text).count)
                      + "\n" + "dictation.dictionary.hint".localized)
@@ -50,6 +58,19 @@ struct DictationDictionaryView: View {
             }
         }
         .navigationTitle("dictation.dictionary.title".localized)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("dictation.dictionary.save".localized, action: save)
+                    .disabled(!hasChanges)
+            }
+        }
+        .onAppear {
+            text = DictationDictionary.text
+            savedText = text
+            enabled = DictationDictionary.isEnabled
+        }
+        // Back is the system button; leaving must not quietly drop the edits.
+        .onDisappear { if hasChanges { DictationDictionary.save(text) } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.plainText]) { result in
             guard case .success(let url) = result else { return }
             let scoped = url.startAccessingSecurityScopedResource()
@@ -73,6 +94,33 @@ struct DictationDictionaryView: View {
         } message: {
             Text("dictation.dictionary.replace.message".localized)
         }
+    }
+
+    private var hasChanges: Bool { text != savedText }
+
+    @ViewBuilder
+    private var saveStatus: some View {
+        if saveFailed {
+            Label("dictation.dictionary.saveFailed".localized, systemImage: "exclamationmark.triangle.fill")
+                .foregroundColor(.red)
+        } else if hasChanges {
+            Label("dictation.dictionary.unsaved".localized, systemImage: "pencil.circle")
+                .foregroundColor(.orange)
+        } else {
+            Label("dictation.dictionary.saved".localized, systemImage: "checkmark.circle.fill")
+                .foregroundColor(.green)
+        }
+    }
+
+    private func save() {
+        if DictationDictionary.save(text) {
+            savedText = text
+            saveFailed = false
+        } else {
+            saveFailed = true
+            flog("DictationDictionary: save did not read back")
+        }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     /// Text the user wrote would be lost to an import or a reset; the example would not.

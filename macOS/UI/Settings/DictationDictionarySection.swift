@@ -8,7 +8,10 @@ struct DictationDictionarySection: View {
     @EnvironmentObject var modelManager: ModelManager
     @EnvironmentObject var transcriptionEngine: TranscriptionEngine
 
+    /// A draft until Save; `savedText` is what the store holds.
     @State private var text = DictationDictionary.text
+    @State private var savedText = DictationDictionary.text
+    @State private var saveFailed = false
     @State private var enabled = DictationDictionary.isEnabled
     @StateObject private var fit = PromptFitCounter()
 
@@ -17,12 +20,14 @@ struct DictationDictionarySection: View {
             Toggle("dictation.dictionary.enabled".localized, isOn: $enabled)
                 .onChange(of: enabled) { DictationDictionary.isEnabled = $0 }
 
+            // Full width, unlike the pickers' 360 pt cap: an editor wraps its
+            // lines and cannot push the sidebar.
             TextEditor(text: $text)
                 .font(.system(.body, design: .monospaced))
-                .frame(maxWidth: 360, minHeight: 180, maxHeight: 180)
+                .frame(maxWidth: .infinity, minHeight: 180, idealHeight: 240, maxHeight: 320)
                 .border(Color.secondary.opacity(0.3))
-                .onChange(of: text) { newValue in
-                    DictationDictionary.text = newValue
+                .onChange(of: text) { _ in
+                    saveFailed = false
                     scheduleFit()
                 }
 
@@ -39,6 +44,13 @@ struct DictationDictionarySection: View {
             }
 
             HStack(spacing: 8) {
+                Button("dictation.dictionary.save".localized, action: save)
+                    .keyboardShortcut("s")
+                    .disabled(!hasChanges)
+                saveStatus
+            }
+
+            HStack(spacing: 8) {
                 Button("dictation.dictionary.import".localized, action: importFile)
                 Button("dictation.dictionary.export".localized, action: exportFile)
                 Button("dictation.dictionary.reset".localized, action: resetToExample)
@@ -51,7 +63,43 @@ struct DictationDictionarySection: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding()
-        .onAppear(perform: scheduleFit)
+        .onAppear {
+            text = DictationDictionary.text
+            savedText = text
+            enabled = DictationDictionary.isEnabled
+            scheduleFit()
+        }
+        // Switching tabs or closing the window must not quietly drop the edits.
+        .onDisappear { if hasChanges { DictationDictionary.save(text) } }
+    }
+
+    private var hasChanges: Bool { text != savedText }
+
+    @ViewBuilder
+    private var saveStatus: some View {
+        Group {
+            if saveFailed {
+                Label("dictation.dictionary.saveFailed".localized, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+            } else if hasChanges {
+                Label("dictation.dictionary.unsaved".localized, systemImage: "pencil.circle")
+                    .foregroundColor(.orange)
+            } else {
+                Label("dictation.dictionary.saved".localized, systemImage: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+            }
+        }
+        .font(.caption)
+    }
+
+    private func save() {
+        if DictationDictionary.save(text) {
+            savedText = text
+            saveFailed = false
+        } else {
+            saveFailed = true
+            flog("DictationDictionary: save did not read back")
+        }
     }
 
     private var terms: [String] { DictationDictionary.terms(from: text) }

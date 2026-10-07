@@ -48,6 +48,14 @@ enum DictationDictionary {
         set { defaults.set(newValue, forKey: textKey) }
     }
 
+    /// Writes the text and reads it back; false if the store did not keep it.
+    /// The editors say "Saved" only on true.
+    @discardableResult
+    static func save(_ newText: String) -> Bool {
+        text = newText
+        return defaults.string(forKey: textKey) == newText
+    }
+
     static var isEnabled: Bool {
         get { defaults.bool(forKey: enabledKey) }
         set { defaults.set(newValue, forKey: enabledKey) }

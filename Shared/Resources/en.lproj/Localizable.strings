@@ -555,4 +555,8 @@
 "dictation.dictionary.replace.message" = "The current dictionary text will be replaced.";
 "dictation.dictionary.replace.confirm" = "Replace";
 "dictation.dictionary.fileName" = "Dictation dictionary";
+"dictation.dictionary.save" = "Save";
+"dictation.dictionary.saved" = "Saved";
+"dictation.dictionary.unsaved" = "Unsaved changes";
+"dictation.dictionary.saveFailed" = "Couldn't save";
 "dictation.dictionary.example" = "# Dictation dictionary — words the recognizer should expect:\n# names, professional jargon, words with an unusual spelling.\n# One word or phrase per line, spelled exactly as it should appear in the text.\n# Put what matters first: a long list is cut from the end.\n# Lines starting with # are notes; the model never sees them.\n# The example below (Russian): a name, a jargon word and a tricky spelling.\n\nКорвин\nдеплой\nвайбкодинг\n";

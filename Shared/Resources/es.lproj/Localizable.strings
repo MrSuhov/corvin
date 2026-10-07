@@ -555,4 +555,8 @@
 "dictation.dictionary.replace.message" = "El texto actual del diccionario se reemplazará.";
 "dictation.dictionary.replace.confirm" = "Reemplazar";
 "dictation.dictionary.fileName" = "Diccionario de dictado";
+"dictation.dictionary.save" = "Guardar";
+"dictation.dictionary.saved" = "Guardado";
+"dictation.dictionary.unsaved" = "Cambios sin guardar";
+"dictation.dictionary.saveFailed" = "No se pudo guardar";
 "dictation.dictionary.example" = "# Diccionario de dictado: palabras que el reconocedor debe esperar:\n# nombres, jerga profesional, palabras de ortografía poco evidente.\n# Una palabra o frase por línea, escrita tal como debe aparecer en el texto.\n# Pon primero lo importante: una lista larga se recorta por el final.\n# Las líneas que empiezan con # son notas; el modelo no las ve.\n# Ejemplo (en ruso): un nombre, una palabra de jerga y una ortografía difícil.\n\nКорвин\nдеплой\nвайбкодинг\n";

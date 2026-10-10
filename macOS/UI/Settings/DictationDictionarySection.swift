@@ -14,6 +14,8 @@ struct DictationDictionarySection: View {
     @State private var saveFailed = false
     @State private var enabled = DictationDictionary.isEnabled
     @StateObject private var fit = PromptFitCounter()
+    @ObservedObject private var sync = DictionarySync.shared
+    @State private var pairingInvite: SyncPairing.Invite?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -61,8 +63,21 @@ struct DictationDictionarySection: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            syncBlock
+                .padding(.top, 8)
         }
         .padding()
+        .sheet(item: $pairingInvite) { invite in
+            SyncPairingSheet(invite: invite) { pairingInvite = nil }
+        }
+        // The iPhone saved later: show its text, unless a draft is open —
+        // then the draft stays and reads as unsaved against the new text.
+        .onReceive(NotificationCenter.default.publisher(for: DictationDictionary.didChangeNotification)) { _ in
+            let stored = DictationDictionary.text
+            if !hasChanges { text = stored }
+            savedText = stored
+        }
         .onAppear {
             text = DictationDictionary.text
             savedText = text
@@ -74,6 +89,39 @@ struct DictationDictionarySection: View {
     }
 
     private var hasChanges: Bool { text != savedText }
+
+    private var syncBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("dictation.sync.title".localized)
+                .font(.subheadline.weight(.semibold))
+            if sync.isPaired {
+                Text(sync.statusText)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            HStack(spacing: 8) {
+                Button("dictation.sync.pairMac".localized) { pairingInvite = sync.invite() }
+                if sync.isPaired {
+                    Button("dictation.sync.newCode".localized, action: renewCode)
+                    Button("dictation.sync.unpair".localized) { sync.unpair() }
+                }
+            }
+            Text("dictation.sync.hint".localized)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func renewCode() {
+        let alert = NSAlert()
+        alert.messageText = "dictation.sync.newCode".localized
+        alert.informativeText = "dictation.sync.newCode.message".localized
+        alert.addButton(withTitle: "dictation.sync.newCode".localized)
+        alert.addButton(withTitle: "common.cancel".localized)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        pairingInvite = sync.invite(renew: true)
+    }
 
     @ViewBuilder
     private var saveStatus: some View {

@@ -109,6 +109,22 @@ AudioCaptureService.onSamples ─► SpeechRecognizer ─► TranscriptEvent ─
   keeps only the *last* 224 prompt tokens — the start it drops would be the dictionary. Off by
   default: a Russian prompt pulls auto-detect towards Russian. GigaAM takes no prompt and ignores it.
 
+### Dictionary sync (macOS ↔ iOS)
+
+`DictionarySync` (`Shared/Core/Sync/`) keeps the dictation dictionary the same on the user's own
+devices, **directly over the local network — never a cloud** (iCloud was rejected for that).
+- Pairing: the Mac makes a random 32-byte group key (Keychain, `ThisDeviceOnly`) and shows it as a
+  `corvin://sync-pair?k=…&n=…` QR (`SyncPairingSheet`); the iPhone camera opens it in Corvin, which
+  asks before joining (`syncPairingConfirmation`); "Paste Link" is the way without a camera.
+- Transport: every paired device advertises and browses `_corvin-sync._tcp` (TXT `g` = group ID
+  derived from the key, `d` = device ID), TLS 1.2 PSK with the group key. Unpaired devices do not
+  listen at all, so they never see the local network prompt.
+- An exchange is one round trip; the later **save** wins, whole text (`SyncResolution`; never-saved
+  loses, ties go to the larger text). `adopt` keeps the remote `savedAtMs` — stamping "now" would
+  bounce the text between devices. Only the text syncs; the on/off toggle stays per device.
+- Runs when a peer appears, after a local Save (`DictationDictionary.onSave`), every 5 min, and on
+  iOS `didBecomeActive` (restart: a suspended app's listener is a zombie, as with `IPCServer`).
+
 ### File transcription (macOS)
 
 ```
@@ -372,5 +388,6 @@ git push origin main
 - External dependency: KeyboardKit (iOS keyboard extension only)
 - Unit tests: `swift test` (`Tests/CorvinTests`: pure logic and the call file format; no model,
   no audio devices). iOS has UI tests only (`Tests/UITests`)
-- Local only: recognition, diarization, dictionaries and transcripts never leave the device; the
-  network is used only to download model files
+- Local only: recognition, diarization, dictionaries and transcripts never go to a cloud; the
+  network is used to download model files and, once the user pairs them, to sync the dictation
+  dictionary between their own devices on the local network

@@ -37,6 +37,13 @@
     <key>NSMicrophoneUsageDescription</key>
     <string>Corvin uses the microphone to record your voice and convert it to text.</string>
     <!-- Call recording: the other side's audio, from the app the user picks. -->
+    <!-- Dictionary sync: Bonjour on the local network, only once paired. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Corvin uses the local network to sync the dictation dictionary directly with your other devices.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_corvin-sync._tcp</string>
+    </array>
     <key>NSAudioCaptureUsageDescription</key>
     <string>Corvin records the other side of a call from the app you choose, to transcribe the conversation on this Mac.</string>
     <key>NSAccessibilityUsageDescription</key>

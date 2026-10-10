@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 /// its initial state can be stale — the stored values are loaded on appear.
 struct DictationDictionaryView: View {
     @EnvironmentObject var modelManager: ModelManager
+    @ObservedObject private var sync = DictionarySync.shared
 
     @State private var text = ""
     /// What the store holds; the draft differs from it until Save.
@@ -19,6 +20,8 @@ struct DictationDictionaryView: View {
     /// A file read but not applied yet: the user's own text is about to go.
     @State private var pendingImport: String?
     @State private var confirmingReset = false
+    @State private var pairingInvite: SyncPairing.Invite?
+    @State private var invalidLink = false
 
     var body: some View {
         Form {
@@ -56,6 +59,8 @@ struct DictationDictionaryView: View {
                 }
                 .disabled(text == DictationDictionary.exampleText)
             }
+
+            syncSection
         }
         .navigationTitle("dictation.dictionary.title".localized)
         .toolbar {
@@ -71,6 +76,13 @@ struct DictationDictionaryView: View {
         }
         // Back is the system button; leaving must not quietly drop the edits.
         .onDisappear { if hasChanges { DictationDictionary.save(text) } }
+        // Another device saved later: show its text, unless a draft is open —
+        // then the draft stays and reads as unsaved against the new text.
+        .onReceive(NotificationCenter.default.publisher(for: DictationDictionary.didChangeNotification)) { _ in
+            let stored = DictationDictionary.text
+            if !hasChanges { text = stored }
+            savedText = stored
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.plainText]) { result in
             guard case .success(let url) = result else { return }
             let scoped = url.startAccessingSecurityScopedResource()
@@ -97,6 +109,36 @@ struct DictationDictionaryView: View {
     }
 
     private var hasChanges: Bool { text != savedText }
+
+    /// Pairing comes from the Mac's QR code (the camera opens it in Corvin);
+    /// pasting the link is the way without a camera.
+    private var syncSection: some View {
+        Section {
+            if sync.isPaired {
+                Text(sync.statusText)
+                    .foregroundColor(.secondary)
+                Button("dictation.sync.unpair".localized, role: .destructive) { sync.unpair() }
+            } else {
+                Text("dictation.sync.pairIOS".localized)
+                    .foregroundColor(.secondary)
+                Button("dictation.sync.paste".localized) {
+                    if let invite = UIPasteboard.general.string.flatMap(SyncPairing.invite(from:)) {
+                        pairingInvite = invite
+                    } else {
+                        invalidLink = true
+                    }
+                }
+            }
+        } header: {
+            Text("dictation.sync.title".localized)
+        } footer: {
+            Text("dictation.sync.hint".localized)
+        }
+        .alert("dictation.sync.invalidLink".localized, isPresented: $invalidLink) {
+            Button("common.close".localized, role: .cancel) {}
+        }
+        .syncPairingConfirmation(invite: $pairingInvite)
+    }
 
     @ViewBuilder
     private var saveStatus: some View {

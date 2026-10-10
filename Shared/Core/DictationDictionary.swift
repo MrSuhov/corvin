@@ -49,11 +49,46 @@ enum DictationDictionary {
     }
 
     /// Writes the text and reads it back; false if the store did not keep it.
-    /// The editors say "Saved" only on true.
+    /// The editors say "Saved" only on true. A save is what sync compares:
+    /// the later one wins on every device.
     @discardableResult
     static func save(_ newText: String) -> Bool {
         text = newText
-        return defaults.string(forKey: textKey) == newText
+        savedAtMs = Int64((Date().timeIntervalSince1970 * 1000).rounded())
+        let kept = defaults.string(forKey: textKey) == newText
+        if kept { onSave?() }
+        return kept
+    }
+
+    // MARK: - Sync
+
+    static let savedAtKey = "dictationDictionary.savedAt"
+
+    /// Posted on the main queue when another device's dictionary replaced this one.
+    static let didChangeNotification = Notification.Name("DictationDictionary.didChange")
+
+    /// Set by `DictionarySync`: a local save is pushed to the paired devices.
+    static var onSave: (() -> Void)?
+
+    /// When the text was last saved on any device; nil until it has been.
+    static var savedAtMs: Int64? {
+        get { (defaults.object(forKey: savedAtKey) as? NSNumber)?.int64Value }
+        set { defaults.set(newValue.map { NSNumber(value: $0) }, forKey: savedAtKey) }
+    }
+
+    static var state: DictionaryState { DictionaryState(text: text, savedAtMs: savedAtMs) }
+
+    /// Takes another device's dictionary, keeping *its* save time — stamping
+    /// "now" would make the two devices bounce the text back and forth.
+    static func adopt(_ remote: DictionaryState) {
+        guard let time = remote.savedAtMs else { return }
+        let changed = remote.text != text
+        text = remote.text
+        savedAtMs = time
+        guard changed else { return }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: didChangeNotification, object: nil)
+        }
     }
 
     static var isEnabled: Bool {

@@ -88,8 +88,13 @@ struct CorviniOSApp: App {
                         .environmentObject(appState.historyStore)
                         .environmentObject(appState)
                         .onOpenURL { url in
-                            appState.transcribeFile(url: url)
+                            if url.scheme == SyncPairing.scheme {
+                                appState.pendingSyncInvite = SyncPairing.invite(from: url)
+                            } else {
+                                appState.transcribeFile(url: url)
+                            }
                         }
+                        .syncPairingConfirmation(invite: $appState.pendingSyncInvite)
                 } else {
                     iOSOnboardingView(onComplete: {
                         appState.onboardingCompleted = true

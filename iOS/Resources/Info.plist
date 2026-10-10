@@ -78,7 +78,22 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Corvin использует локальную сеть для связи между приложением и клавиатурой.</string>
+	<string>Corvin использует локальную сеть для связи с клавиатурой и для синхронизации словаря диктовки напрямую с другими вашими устройствами.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_corvin-sync._tcp</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.corvinvoice.ios.sync-pair</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>corvin</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Corvin использует микрофон для транскрипции речи в текст.</string>
 	<key>UIApplicationSceneManifest</key>

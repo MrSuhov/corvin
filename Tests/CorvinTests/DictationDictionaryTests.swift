@@ -10,6 +10,7 @@ final class DictationDictionaryTests: XCTestCase {
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: DictationDictionary.textKey)
         UserDefaults.standard.removeObject(forKey: DictationDictionary.enabledKey)
+        UserDefaults.standard.removeObject(forKey: DictationDictionary.savedAtKey)
         super.tearDown()
     }
 

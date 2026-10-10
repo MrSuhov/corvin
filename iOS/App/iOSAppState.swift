@@ -31,6 +31,8 @@ class iOSAppState: ObservableObject {
     }
 
     @Published var ipcServerRunning = false
+    /// A `corvin://sync-pair` link opened from the camera, waiting for the user's yes.
+    @Published var pendingSyncInvite: SyncPairing.Invite?
     /// Non-nil only while the keyboard's wake link is being served, so the
     /// user can watch what is still starting instead of an idle-looking screen.
     @Published var wakeProgress: WakeProgress?
@@ -65,6 +67,7 @@ class iOSAppState: ObservableObject {
         }
         ipcServer.start()
         ipcServerRunning = true
+        DictionarySync.shared.start()
 
         // Touch the keep-alive service early: it restores the persisted background mode
         // on launch, so the user never has to find the toggle again.
@@ -119,6 +122,9 @@ class iOSAppState: ObservableObject {
             flog("App: didBecomeActive, modelLoaded=\(self?.transcriptionEngine.isModelLoaded ?? false)")
             // Force restart IPC server - it may be in "zombie" state after background
             self?.ipcServer.forceRestart()
+            // Same for the sync listener; restarting also re-browses, so a Mac
+            // change made while the app was suspended arrives now.
+            DictionarySync.shared.start()
             // Re-arm both keep-alive layers. Simply opening the app is now enough to
             // recover background mode after another app stole the PiP window.
             Task { @MainActor in

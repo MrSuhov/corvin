@@ -114,6 +114,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updaterService = UpdaterService.shared
         flog("updater started")
 
+        // Dictionary sync with the user's iPhone: listens only once paired.
+        DictionarySync.shared.start()
+
         setupBindings()
         hotkeyService.start()
         flog("hotkeyService started")

@@ -5,5 +5,5 @@
 "NSDownloadsFolderUsageDescription" = "Corvin guarda las transcripciones junto a los archivos de audio que transcribes desde la carpeta Descargas.";
 "NSRemovableVolumesUsageDescription" = "Corvin guarda las transcripciones junto a los archivos de audio que transcribes desde unidades externas.";
 "NSNetworkVolumesUsageDescription" = "Corvin guarda las transcripciones junto a los archivos de audio que transcribes desde volúmenes de red.";
-"NSLocalNetworkUsageDescription" = "Corvin usa la red local solo para comunicar la app y el teclado dentro de tu dispositivo.";
+"NSLocalNetworkUsageDescription" = "Corvin usa la red local para comunicarse con su teclado y sincronizar el diccionario de dictado directamente con tus otros dispositivos.";
 "NSAudioCaptureUsageDescription" = "Corvin graba al interlocutor desde la app que elijas para transcribir la conversación en este Mac.";

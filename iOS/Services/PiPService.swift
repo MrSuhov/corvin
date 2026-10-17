@@ -64,7 +64,7 @@ class PiPService: NSObject, ObservableObject {
     private func setupPiP() {
         flog("PiP setup started")
 
-        // The unified .playAndRecord/.voiceChat session is owned by BackgroundKeepAliveService —
+        // The unified .playAndRecord session is owned by BackgroundKeepAliveService —
         // both PiP playback and mic capture share it, and switching categories breaks PiP.
         // A session failure must NOT abort PiP setup: the two keep-alive layers are independent.
         if !BackgroundKeepAliveService.shared.configureAudioSession() {

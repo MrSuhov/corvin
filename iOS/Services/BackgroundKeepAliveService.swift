@@ -40,6 +40,8 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
     private var watchdog: DispatchSourceTimer?
     private var isRecording = false
     private var isKeyboardActive = false
+    /// Between interruption began and ended the session belongs to someone else (a call).
+    private var isInterrupted = false
 
     /// Called when the keyboard announces itself, so the app can warm the model up.
     var onKeyboardBecameActive: (() -> Void)?
@@ -57,20 +59,32 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
 
     // MARK: - Audio session (owner)
 
+    /// The session stays active for as long as background mode is on, so it must not look
+    /// like a call to the rest of the system:
+    ///  - `.default` mode, not `.voiceChat`: voice chat ducks every other app's audio and
+    ///    moves the volume buttons to call volume — videos played muted while Corvin lived.
+    ///  - A2DP and AirPlay, not HFP: with HFP allowed, Bluetooth headphones dropped to the
+    ///    headset profile and music could not be sent to Bluetooth or AirPlay at all.
+    ///    Dictation records from the built-in mic while headphones keep playing.
+    /// `.playAndRecord` itself stays: a session that cannot record cannot start recording
+    /// from the background, which is when the keyboard asks for it.
+    private static let options: AVAudioSession.CategoryOptions =
+        [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP, .allowAirPlay]
+
     /// Configures the unified session used by both PiP playback and mic capture.
     /// Idempotent; safe to call repeatedly.
     @discardableResult
     func configureAudioSession() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(
-                .playAndRecord,
-                mode: .voiceChat,
-                options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothHFP]
-            )
+            // Re-setting an unchanged category still re-routes, so skip it when nothing differs.
+            if session.category != .playAndRecord || session.mode != .default
+                || session.categoryOptions != Self.options {
+                try session.setCategory(.playAndRecord, mode: .default, options: Self.options)
+            }
             try session.setActive(true)
             errorMessage = nil
-            flog("KeepAlive: audio session playAndRecord/voiceChat active")
+            flog("KeepAlive: audio session playAndRecord/default active")
             return true
         } catch {
             flog("KeepAlive: audio session error: \(error)")
@@ -103,7 +117,7 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
         flog("KeepAlive: revive (\(reason))")
         // Never touch the session mid-capture: reconfiguring it would cut the recording short.
         if !isRecording {
-            configureAudioSession()
+            if !otherAppOwnsAudio { configureAudioSession() }
             startSilentPlayer()
         }
         startWatchdog()
@@ -111,7 +125,7 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
     }
 
     /// The mic is about to be used. The capture itself sustains background execution,
-    /// and `.voiceChat` runs echo cancellation, so the filler signal is paused.
+    /// and the filler signal must not end up in the recording, so it is paused.
     func setRecording(_ recording: Bool) {
         guard isRecording != recording else { return }
         isRecording = recording
@@ -172,7 +186,7 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
         let started = player?.play() ?? false
         isHoldingProcess = started
         flog("KeepAlive: silent player play() -> \(started)")
-        if !started {
+        if !started, !otherAppOwnsAudio {
             // The session was probably deactivated under us; re-arm and retry once.
             configureAudioSession()
             isHoldingProcess = player?.play() ?? false
@@ -252,11 +266,24 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
         guard !isRecording else { return }
         if player?.isPlaying != true {
             flog("KeepAlive: watchdog found player stopped, restarting")
-            configureAudioSession()
+            if !otherAppOwnsAudio { configureAudioSession() }
             startSilentPlayer()
         } else {
             isHoldingProcess = true
         }
+    }
+
+    /// Someone else's call or primary audio holds the route. Re-asserting our session then
+    /// (setCategory/setActive) fights it for the route — that is how a Telegram call switched
+    /// to headphones went silent. The player may still be restarted: play() leaves the route alone.
+    private var otherAppOwnsAudio: Bool {
+        if isInterrupted { return true }
+        let session = AVAudioSession.sharedInstance()
+        if session.secondaryAudioShouldBeSilencedHint {
+            flog("KeepAlive: other app owns audio, leaving the session alone")
+            return true
+        }
+        return false
     }
 
     private func clearAliveBeacon() {
@@ -306,11 +333,13 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
         switch type {
         case .began:
             flog("KeepAlive: audio interruption began")
+            isInterrupted = true
             isHoldingProcess = false
         case .ended:
             let optionsRaw = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
             flog("KeepAlive: audio interruption ended, shouldResume=\(options.contains(.shouldResume))")
+            isInterrupted = false
             revive(reason: "interruption ended")
         @unknown default:
             break
@@ -329,6 +358,7 @@ final class BackgroundKeepAliveService: NSObject, ObservableObject {
         flog("KeepAlive: media services were reset — rebuilding everything")
         player?.stop()
         player = nil
+        isInterrupted = false
         guard isEnabled else { return }
         configureAudioSession()
         startSilentPlayer()

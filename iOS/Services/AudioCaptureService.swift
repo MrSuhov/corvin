@@ -65,7 +65,7 @@ class AudioCaptureService {
         }
 
         // Ensure audio session is active (PiPService already configured it in unified mode)
-        // Don't change category - unified .playAndRecord/.voiceChat mode supports both PiP and mic
+        // Don't change category - unified .playAndRecord session supports both PiP and mic
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setActive(true, options: [])

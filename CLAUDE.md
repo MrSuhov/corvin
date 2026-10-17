@@ -76,6 +76,11 @@ The host app stays alive in the background through the silent-audio layer (`Back
 and the Picture-in-Picture keep-alive (`PiPService`). **Every build ships with PiP** — the owner's
 call; there is no build switch, so do not add one back. "PiP не поддерживается" in the simulator is
 expected: the simulator has no PiP.
+The keep-alive session stays active for hours, so it must not look like a call: `.playAndRecord`
+(recording has to start from the background), mode `.default`, A2DP + AirPlay, mixable. `.voiceChat`
+muted other apps' video and HFP locked Bluetooth/AirPlay music out; and while another app's call
+holds audio (interrupted or `secondaryAudioShouldBeSilencedHint`) the session is never re-set —
+that fight is what silenced Telegram calls on headphones.
 
 ### State Machine Flow
 

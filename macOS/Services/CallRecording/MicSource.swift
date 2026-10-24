@@ -1,11 +1,13 @@
 import AVFoundation
 
-/// The user's side of a call: the default microphone, with voice processing.
+/// The user's side of a call: the default microphone, as it is.
 ///
-/// Voice processing cancels what the speakers play, so without headphones the
-/// other side mostly stays out of this channel; `EchoFilter` handles what gets
-/// through. Its own `AVAudioEngine`, so hotkey dictation keeps working during a
-/// call. Where voice processing cannot start, the raw microphone is recorded.
+/// No voice processing: the call app (Telegram, Zoom, Chrome's WebRTC) runs its
+/// own on the same microphone, and a second voice-processing unit on that
+/// device left the call app with silence — colleagues stopped hearing the user
+/// the moment recording started. Without headphones the other side therefore
+/// leaks into this channel; `EchoFilter` drops it. Its own `AVAudioEngine`, so
+/// hotkey dictation keeps working during a call.
 @available(macOS 13.0, *)
 final class MicSource: CallAudioSource {
     var onChunk: (([Float], UInt64) -> Void)?
@@ -14,60 +16,30 @@ final class MicSource: CallAudioSource {
 
     private var engine: AVAudioEngine?
     private var resampler = MonoResampler()
-    private var voiceProcessing = true
     private var configurationObserver: NSObjectProtocol?
 
     func start() async throws {
         guard await Self.hasPermission() else { throw CallRecordingError.microphoneDenied }
-        do {
-            try startEngine(voiceProcessing: true)
-        } catch {
-            flog("MicSource: voice processing unavailable (\(error)), recording the raw microphone")
-            stopEngine()
-            try startEngine(voiceProcessing: false)
-        }
+        try startEngine()
     }
 
     func stop() {
         stopEngine()
     }
 
-    private func startEngine(voiceProcessing: Bool) throws {
+    private func startEngine() throws {
         let engine = AVAudioEngine()
         self.engine = engine
-        self.voiceProcessing = voiceProcessing
         resampler = MonoResampler()
 
         let input = engine.inputNode
-        if voiceProcessing {
-            // The graph has to be up *before* voice processing is switched on.
-            // Voice processing runs through the output unit, and asking for it
-            // first leaves that unit unable to initialize (-10875 at
-            // kAUInitialize) — which then poisons the whole process: every
-            // later engine in it fails to open the output device at all. That
-            // is why the fallback below touches nothing but the input node.
-            _ = engine.mainMixerNode
-            try input.setVoiceProcessingEnabled(true)
-            if #available(macOS 14.0, *) {
-                // Voice processing ducks other apps by default — here that would
-                // be the call itself.
-                input.voiceProcessingOtherAudioDuckingConfiguration =
-                    AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
-            }
-        }
-
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             throw CallRecordingError.captureFailed("no input device")
         }
         let resampler = self.resampler
-        // Voice processing hands out several discrete channels carrying the
-        // same processed signal; averaging them would be a gamble on that
-        // staying true, and the first channel is the processed microphone by
-        // definition. A plain microphone is mono anyway.
-        let mixdown: MonoResampler.Mixdown = voiceProcessing ? .firstChannel : .average
         input.installTap(onBus: 0, bufferSize: 1600, format: format) { [weak self] buffer, when in
-            let samples = resampler.convert(buffer, mixdown: mixdown)
+            let samples = resampler.convert(buffer, mixdown: .average)
             guard !samples.isEmpty else { return }
             self?.onChunk?(samples, when.isHostTimeValid ? when.hostTime : mach_absolute_time())
         }
@@ -80,31 +52,18 @@ final class MicSource: CallAudioSource {
         ) { [weak self] _ in
             self?.restart()
         }
-        flog("MicSource: started, voiceProcessing=\(voiceProcessing), format=\(format)")
+        flog("MicSource: started, format=\(format)")
     }
 
-    /// Only when the engine actually stopped: enabling voice processing and
-    /// starting the graph post this notification themselves, and restarting on
-    /// those would loop.
+    /// Only when the engine actually stopped: starting the graph posts this
+    /// notification itself, and restarting on that would loop.
     private func restart() {
         guard let engine, !engine.isRunning else { return }
-        let voiceProcessing = self.voiceProcessing
         stopEngine()
         do {
-            try startEngine(voiceProcessing: voiceProcessing)
-            return
+            try startEngine()
         } catch {
             flog("MicSource: restart after configuration change failed: \(error)")
-        }
-        // Same fallback as `start()`: the raw microphone beats no microphone.
-        guard voiceProcessing else {
-            onEnded?(LocalizedMessage("call.error.captureFailed", "microphone restart failed"))
-            return
-        }
-        stopEngine()
-        do {
-            try startEngine(voiceProcessing: false)
-        } catch {
             onEnded?(LocalizedMessage("call.error.captureFailed", error.localizedDescription))
         }
     }

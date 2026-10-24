@@ -3,8 +3,8 @@ import Foundation
 /// Drops speaker bleed from a call's microphone channel.
 ///
 /// Without headphones the other side plays from the speakers and comes back in
-/// through the microphone. Voice processing removes most of it; whatever
-/// survives is transcribed a second time, as if the user had said it. The other
+/// through the microphone (no voice processing: it would fight the call app's
+/// own) and is transcribed a second time, as if the user had said it. The other
 /// side's own channel is clean, so a microphone phrase whose words mostly also
 /// appear there at the same moment is that echo.
 enum EchoFilter {

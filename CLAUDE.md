@@ -166,7 +166,7 @@ FileTranscriptionQueue ─► AudioFileDecoder ─► [roles] DiarizationClient 
 ### Call recording (macOS 13+)
 
 ```
-MicSource (AVAudioEngine + voice processing) ─┐  16 kHz mono + host time
+MicSource (AVAudioEngine, raw microphone)    ─┐  16 kHz mono + host time
 ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter ─► PCM CAF parts (L = me, R = app)
   or ScreenCaptureSource (13–14.1)            ─┘        Stop ─► merge ─► AAC .m4a ─► FileTranscriptionQueue (.call)
 .call job: decodeChannels ─► SpeechSegmenter.spans ─► CompactedAudio (speech only + time map)
@@ -178,8 +178,8 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
   name) and a floating pill (`CallIndicatorView`). `CallRecorder` is separate from `SessionState` on
   purpose: a non-idle session parks the file queue and blocks dictation for the whole call.
 - Two independent streams aligned by host time (`TimelineCursor`, 20 ms tolerance, silence for gaps):
-  voice processing cannot live inside an aggregate device with the tap, and ScreenCaptureKit is a
-  separate stream anyway.
+  the microphone stays out of the tap's aggregate device (the stream was designed around voice
+  processing, which cannot live there), and ScreenCaptureKit is a separate stream anyway.
 - Recorded in parts (`<base>.partN.caf`, length from `CallSettings.chunkMinutes`, default 5): each
   finished part is a closed file, so an interruption costs at most the part in flight. Stop merges
   the parts into one AAC file (`CallRecorder.merge`); parts left in
@@ -187,6 +187,8 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
   PCM rather than AAC while recording because only PCM CAF survives a crash.
 - Roles come from channels ("Me" / "Other"); diarization only splits the other side in group calls.
   `EchoFilter` drops mic phrases also heard on the app channel (speakers without headphones).
+- **No voice processing on the microphone.** The call app runs its own on the same device, and a
+  second unit left it with silence: colleagues stopped hearing the user as soon as recording started.
 - **The shape and the times of a transcript come from the audio, not from whisper.**
   `SpeechSegmenter` (20 ms frames, RMS, threshold clamped both ways) finds each channel's speech; the
   recording pads a quiet channel with silence instead of closing the gap, so a sample position *is*

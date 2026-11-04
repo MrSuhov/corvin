@@ -104,7 +104,7 @@ class HotkeyService {
 
         let callback: CGEventTapCallBack = { proxy, type, event, userInfo in
             guard let service = userInfo.map({ Unmanaged<HotkeyService>.fromOpaque($0).takeUnretainedValue() }) else {
-                return Unmanaged.passRetained(event)
+                return Unmanaged.passUnretained(event)
             }
             return service.handleEvent(proxy: proxy, type: type, event: event)
         }
@@ -165,7 +165,7 @@ class HotkeyService {
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
 
         if type == .flagsChanged, let recordKey = recordKey {
@@ -191,7 +191,7 @@ class HotkeyService {
 
         handleTap(type: type, event: event)
 
-        return Unmanaged.passRetained(event)
+        return Unmanaged.passUnretained(event)
     }
 
     /// Recognises a standalone tap of the configured modifier.

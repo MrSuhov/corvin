@@ -234,7 +234,10 @@ ProcessTapSource (14.2+, Core Audio tap)      ─┼─► CallTimelineWriter �
   queue's jobs — a just-added file has no registry row until its transcript is written). A job's
   status and progress show in its row; there is no separate queue list. Audio dropped on **any**
   tab, "Add Files…", the menubar "Transcribe File…" and Finder's "Open with" all queue at once and
-  select the file in Files (`SettingsTabSelection.show(added:)`).
+  select the file in Files (`SettingsTabSelection.show(added:)`). "Open with" offers Corvin for
+  every `AudioFileDecoder.supportedExtensions` format through `CFBundleDocumentTypes` in
+  `macOS/Resources/Info.plist` — including mp4, webm and mkv, which macOS files as video (a
+  Telemost call recording is a `.webm`); keep the two lists in step.
 - The card's **Transcription** block — plain / by speaker, model, Transcribe / Stop — is the only
   place the choice is made. A run remembers it (`dialogMode`, `defaultModelID`) for files added
   next; there is no global toggle. A call has no mode choice (its channels give the roles). The card

@@ -32,11 +32,24 @@ make project       # Generate Xcode project via XcodeGen
 - `scripts/publish-models-manifest.sh` — regenerate and publish `models.json` (whisper models plus
   the `diarization` section, one entry per `DIARIZATION_ENTRIES` item in `generate-models-manifest.py`,
   each pinned to a revision)
+- `scripts/publish-caddy-routes.sh` — installs `deploy/caddy/corvin.caddy` (see "Server routes")
 - `scripts/generate-status-bar-icons.swift` — the menubar raven, beak closed (idle), open
   (recording), and closed with the eye twice as wide (transcribing), 24×18 pt template PNGs into
   `macOS/Resources`; its outline is measured off a canonical raven profile, and the neck ends in
   feathers inside the frame — cut by the frame it read as a square. The update badge is a green view over the button, not part of the icon — a template
   image is one colour, and a coloured icon would lose the state tints and light/dark adaptation
+
+### Server routes (hyperstack.ru)
+
+The model catalogue (`/corvin/*` → `/var/www/corvin`) and the App Store pages (`/apps`, `/apps/*`
+→ `/var/www/apps`) are routes inside the `hyperstack.ru` site on the shared Caddy of 109.73.207.207
+(`ssh reactor`), which serves four projects. Each project writes only its own file: ours is
+`deploy/caddy/corvin.caddy`, installed as `/etc/caddy/hyperstack.d/corvin.caddy` by
+`scripts/publish-caddy-routes.sh` through the shared `/usr/local/sbin/caddy-site-install` (validates
+the whole config first, restores the old file if the reload fails). The `hyperstack.ru` block and
+its `import` belong to Reactor. Never edit `/etc/caddy/Caddyfile` or another project's file; the
+rules for everyone are in `/etc/caddy/README.md` on the server. Until the split day the routes still
+sit in the one big Caddyfile, and the script refuses to run.
 
 ### Releasing (macOS)
 

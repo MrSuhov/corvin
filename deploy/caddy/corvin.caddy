@@ -1,0 +1,35 @@
+# Маршруты Corvin внутри сайта `hyperstack.ru { … }` общего Caddy сервера
+# 109.73.207.207. Не сайт, а фрагмент: блок hyperstack.ru держит Reactor и
+# подключает его через `import /etc/caddy/hyperstack.d/*.caddy` — выше общего
+# `handle { reverse_proxy localhost:3001 }`, иначе оба пути уйдут в Next.js.
+#
+# На сервере — /etc/caddy/hyperstack.d/corvin.caddy; ставит только
+# scripts/publish-caddy-routes.sh через caddy-site-install, руками не править.
+# Правила для всех проектов — /etc/caddy/README.md на сервере.
+#
+# Перенесено дословно из живого /etc/caddy/Caddyfile 12.11.2026, до этого
+# копии в репозитории не было (24.09.2026 деплой tonus стёр эти блоки,
+# каталог моделей отдавал 404).
+
+# Corvin model catalogue: a static manifest the iOS/macOS apps poll so the
+# model list can change without shipping an app update. Must stay ahead of the
+# catch-all handle below, which would otherwise send it to localhost:3001.
+# Источник: github.com/MrSuhov/corvin, scripts/publish-models-manifest.sh.
+handle_path /corvin/* {
+	root * /var/www/corvin
+	file_server
+	header Cache-Control "public, max-age=300"
+}
+
+# Static pages for the mobile apps: the product/support page Apple's review
+# links to, and the privacy policy. `handle` rather than `handle_path` so the
+# on-disk layout under /var/www matches the URL, and the path list covers the
+# bare /apps as well — Caddy's /apps/* does not match exact /apps.
+# Must stay ahead of the catch-all below, which would send these to the
+# Next.js site on :3001.
+@corvin_apps path /apps /apps/*
+handle @corvin_apps {
+	root * /var/www
+	file_server
+	header Cache-Control "public, max-age=300"
+}

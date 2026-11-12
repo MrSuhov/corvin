@@ -1,9 +1,9 @@
 # Маршруты Corvin внутри сайта `hyperstack.ru { … }` общего Caddy сервера
 # 109.73.207.207. Не сайт, а фрагмент: блок hyperstack.ru держит Reactor и
-# подключает его через `import /etc/caddy/hyperstack.d/*.caddy` — выше общего
+# подключает его через `import ../hyperstack.d/routes/*.caddy` — выше общего
 # `handle { reverse_proxy localhost:3001 }`, иначе оба пути уйдут в Next.js.
 #
-# На сервере — /etc/caddy/hyperstack.d/corvin.caddy; ставит только
+# На сервере — /etc/caddy/hyperstack.d/routes/corvin.caddy; ставит только
 # scripts/publish-caddy-routes.sh через caddy-site-install, руками не править.
 # Правила для всех проектов — /etc/caddy/README.md на сервере.
 #

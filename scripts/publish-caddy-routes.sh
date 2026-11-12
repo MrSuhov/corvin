@@ -5,7 +5,7 @@
 # file, through /usr/local/sbin/caddy-site-install: it validates the whole
 # config with the new file before writing it and puts the old one back if the
 # reload fails. Corvin's routes live inside the `hyperstack.ru` site, which
-# Reactor owns, so ours is /etc/caddy/hyperstack.d/corvin.caddy, imported from
+# Reactor owns, so ours is /etc/caddy/hyperstack.d/routes/corvin.caddy, imported from
 # that block. Rules for every project: /etc/caddy/README.md on the server.
 #
 # Run it after changing deploy/caddy/corvin.caddy — nothing else installs that
@@ -20,9 +20,9 @@ REMOTE_HOST="reactor"
 # Where the file waits for the installer. The installer reads it from here, so
 # this path is the one a sudoers line would pin.
 REMOTE_SRC="/opt/corvin/deploy/caddy/corvin.caddy"
-INSTALLED="/etc/caddy/hyperstack.d/corvin.caddy"
+INSTALLED="/etc/caddy/hyperstack.d/routes/corvin.caddy"
 INSTALLER="/usr/local/sbin/caddy-site-install"
-# `routes` is the installer's slot for hyperstack.d/<project>.caddy (approved by
+# `routes` is the installer's slot for hyperstack.d/routes/<project>.caddy (approved by
 # Reactor); without it the installer would write sites/corvin.caddy.
 INSTALL_ARGS=(corvin "$REMOTE_SRC" routes)
 

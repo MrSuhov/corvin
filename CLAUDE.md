@@ -44,7 +44,7 @@ make project       # Generate Xcode project via XcodeGen
 The model catalogue (`/corvin/*` → `/var/www/corvin`) and the App Store pages (`/apps`, `/apps/*`
 → `/var/www/apps`) are routes inside the `hyperstack.ru` site on the shared Caddy of 109.73.207.207
 (`ssh reactor`), which serves four projects. Each project writes only its own file: ours is
-`deploy/caddy/corvin.caddy`, installed as `/etc/caddy/hyperstack.d/corvin.caddy` by
+`deploy/caddy/corvin.caddy`, installed as `/etc/caddy/hyperstack.d/routes/corvin.caddy` by
 `scripts/publish-caddy-routes.sh` through the shared `/usr/local/sbin/caddy-site-install` (validates
 the whole config first, restores the old file if the reload fails). The `hyperstack.ru` block and
 its `import` belong to Reactor. Never edit `/etc/caddy/Caddyfile` or another project's file; the

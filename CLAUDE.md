@@ -48,8 +48,8 @@ The model catalogue (`/corvin/*` → `/var/www/corvin`) and the App Store pages 
 `scripts/publish-caddy-routes.sh` through the shared `/usr/local/sbin/caddy-site-install` (validates
 the whole config first, restores the old file if the reload fails). The `hyperstack.ru` block and
 its `import` belong to Reactor. Never edit `/etc/caddy/Caddyfile` or another project's file; the
-rules for everyone are in `/etc/caddy/README.md` on the server. Until the split day the routes still
-sit in the one big Caddyfile, and the script refuses to run.
+rules for everyone are in `/etc/caddy/README.md` on the server. The script refuses to run if the
+installer or our routes file is missing on the server.
 
 ### Releasing (macOS)
 

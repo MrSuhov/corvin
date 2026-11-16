@@ -239,8 +239,7 @@ enum AudioFileDecoder {
     /// channel. Corvin's call recordings put the microphone on the left and the
     /// other side on the right.
     ///
-    /// Reads in one-second blocks: a call runs for an hour, and `decode(url:)`
-    /// holds the whole file in one buffer at its source rate.
+    /// Reads in one-second blocks, through `readTolerantly` like `decode(url:)`.
     static func decodeChannels(url: URL) throws -> (left: Data, right: Data) {
         let file: AVAudioFile
         do {
@@ -293,10 +292,8 @@ enum AudioFileDecoder {
                                         count: Int(converted.frameLength) * MemoryLayout<Int16>.size))
         }
 
-        while file.framePosition < file.length {
-            try file.read(into: block)
+        try readTolerantly(file, into: block) { block in
             let frames = Int(block.frameLength)
-            guard frames > 0 else { break }
             for channel in 0..<2 {
                 guard let buffer = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: AVAudioFrameCount(frames)) else {
                     throw DecoderError.conversionFailed("Cannot create channel buffer")
@@ -365,33 +362,120 @@ enum AudioFileDecoder {
             throw DecoderError.conversionFailed("Cannot create converter from \(srcFormat) to \(dstFormat)")
         }
 
-        let frameCount = AVAudioFrameCount(file.length)
-        guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: frameCount) else {
+        // One second at a time: a meeting runs for an hour, and one buffer for
+        // the whole file at its source rate is gigabytes of Float32.
+        guard let block = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: AVAudioFrameCount(srcFormat.sampleRate)) else {
             throw DecoderError.conversionFailed("Cannot create source buffer")
         }
-        try file.read(into: srcBuffer)
+        var output = Data()
 
-        let ratio = 16000.0 / srcFormat.sampleRate
-        let outputFrames = AVAudioFrameCount(Double(frameCount) * ratio)
-        guard let dstBuffer = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: outputFrames) else {
-            throw DecoderError.conversionFailed("Cannot create destination buffer")
+        /// `input == nil` flushes the converter at the end of the file.
+        func convert(_ input: AVAudioPCMBuffer?) throws {
+            let frames = Double(input?.frameLength ?? 0)
+            guard let converted = AVAudioPCMBuffer(
+                pcmFormat: dstFormat,
+                frameCapacity: AVAudioFrameCount(frames * 16000 / srcFormat.sampleRate) + 1024
+            ) else {
+                throw DecoderError.conversionFailed("Cannot create destination buffer")
+            }
+            var fed = false
+            var error: NSError?
+            converter.convert(to: converted, error: &error) { _, status in
+                guard let input else {
+                    status.pointee = .endOfStream
+                    return nil
+                }
+                if fed {
+                    status.pointee = .noDataNow
+                    return nil
+                }
+                fed = true
+                status.pointee = .haveData
+                return input
+            }
+            if let error { throw DecoderError.conversionFailed(error.localizedDescription) }
+            output.append(Data(bytes: converted.int16ChannelData![0],
+                               count: Int(converted.frameLength) * MemoryLayout<Int16>.size))
         }
 
-        var error: NSError?
-        converter.convert(to: dstBuffer, error: &error) { _, outStatus in
-            outStatus.pointee = .haveData
-            return srcBuffer
-        }
-        if let error = error {
-            throw DecoderError.conversionFailed(error.localizedDescription)
-        }
+        try readTolerantly(file, into: block) { try convert($0) }
+        try convert(nil)
 
-        guard dstBuffer.frameLength > 0 else {
+        guard !output.isEmpty else {
             throw DecoderError.emptyResult
         }
+        return output
+    }
 
-        let byteCount = Int(dstBuffer.frameLength) * MemoryLayout<Int16>.size
-        return Data(bytes: dstBuffer.int16ChannelData![0], count: byteCount)
+    /// Reads `file` from start to end into `block`, handing each filled block
+    /// to `consume`.
+    ///
+    /// Apple's AAC decoder rejects some packets that other decoders play: a
+    /// 50-minute meeting `.mp4` failed at four spots (-50 from
+    /// `ExtAudioFileRead`), three seconds in all, and one such spot used to fail
+    /// the whole file. A block that will not decode becomes silence of the same
+    /// length, and reading resumes one AAC packet further on at a time — so
+    /// what follows keeps its true time. Up to a block of good audio around a
+    /// bad spot is lost with it. Only a file nothing can be read from throws.
+    private static func readTolerantly(
+        _ file: AVAudioFile,
+        into block: AVAudioPCMBuffer,
+        _ consume: (AVAudioPCMBuffer) throws -> Void
+    ) throws {
+        let packet: AVAudioFramePosition = 1024
+        var decoded: AVAudioFramePosition = 0
+        var skipped: AVAudioFramePosition = 0
+        var firstError: Error?
+
+        func silence(_ frames: AVAudioFramePosition) throws {
+            guard let empty = AVAudioPCMBuffer(pcmFormat: block.format, frameCapacity: block.frameCapacity) else {
+                throw DecoderError.conversionFailed("Cannot create silence buffer")
+            }
+            var left = frames
+            while left > 0 {
+                let count = AVAudioFrameCount(min(left, AVAudioFramePosition(empty.frameCapacity)))
+                empty.frameLength = count
+                for channel in 0..<Int(block.format.channelCount) {
+                    empty.floatChannelData![channel].update(repeating: 0, count: Int(count))
+                }
+                try consume(empty)
+                left -= AVAudioFramePosition(count)
+            }
+        }
+
+        while file.framePosition < file.length {
+            let start = file.framePosition
+            do {
+                try file.read(into: block)
+            } catch {
+                firstError = firstError ?? error
+                var resume = start
+                var readable = false
+                while !readable {
+                    resume += packet
+                    guard resume < file.length else { break }
+                    file.framePosition = resume
+                    readable = (try? file.read(into: block)) != nil
+                }
+                resume = min(resume, file.length)
+                flog("AudioFileDecoder: unreadable audio at \(Double(start) / file.processingFormat.sampleRate) s, "
+                     + "\(Double(resume - start) / file.processingFormat.sampleRate) s replaced by silence: \(error)")
+                skipped += resume - start
+                try silence(resume - start)
+                guard readable else { break }
+            }
+            guard block.frameLength > 0 else { break }
+            decoded += AVAudioFramePosition(block.frameLength)
+            try consume(block)
+        }
+
+        if decoded == 0, let firstError {
+            throw DecoderError.conversionFailed(firstError.localizedDescription)
+        }
+        if skipped > 0 {
+            flog("AudioFileDecoder: \(Double(skipped) / file.processingFormat.sampleRate) s of "
+                 + "\(Double(file.length) / file.processingFormat.sampleRate) s could not be decoded")
+        }
     }
 
     // MARK: - Container sniffing
